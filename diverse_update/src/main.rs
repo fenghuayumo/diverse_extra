@@ -44,7 +44,7 @@ pub async fn download_and_extract(
     output_path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if pre_dll_has_exist() {
-        println!("The pre dll has existed, no need to download again");
+        println!("The prerequisite  package has existed, no need to download again");
         return Ok(());
     }
     // 创建一个 Reqwest 客户端
@@ -61,7 +61,7 @@ pub async fn download_and_extract(
     pb.set_style(ProgressStyle::default_bar()
         .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
         .progress_chars("#>-"));
-    pb.set_message(format!("Downloading {}", url));
+    pb.set_message(format!("Downloading prerequisite  package : torch"));
 
     // 创建一个文件用于保存下载的文件
     let mut file = File::create(output_path)?;
@@ -118,7 +118,7 @@ pub async fn download_and_extract(
         let path = entry.path();
         let file_name = path.file_name().unwrap();
         let file_name = file_name.to_str().unwrap();
-        let new_path = Path::new(".").join(file_name);
+        let new_path = Path::new("torch_dll").join(file_name);
         //if the file is dll, then move it to the current directory
         if is_torch_pre_dll(path.to_str().unwrap()) {
             fs::rename(path, new_path)?;
