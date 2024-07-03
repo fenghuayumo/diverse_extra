@@ -18,9 +18,9 @@ fn getExecutablePath() -> std::io::Result<std::path::PathBuf> {
 
 //declare a global filename array
 fn is_torch_pre_dll(path: &str)->bool{
-    let global_file_name = vec!["torch.dll", "torch_cpu.dll", "torch_cuda.dll", "c10_cuda.dll", "c10.dll", 
+    let global_file_name = vec!["torch.dll", "torch_cpu.dll", "torch_cuda.dll", "c10_cuda.dll", "c10.dll", "cudart64_110.dll",
     "uv.dll", "cudnn_ops_infer64_8.dll", "cudnn_cnn_infer64_8.dll","asmjit.dll", "zlibwapi.dll", "nvToolsExt64_1.dll", 
-    "nvfuser_codegen.dll", "cudnn64_8.dll"];
+    "nvfuser_codegen.dll", "cudnn64_8.dll", "fbgemm.dll", "fbjni.dll"];
     
     //whether the path is belong to the global_file_name
     let exec_path = getExecutablePath().unwrap();
@@ -35,13 +35,13 @@ fn is_torch_pre_dll(path: &str)->bool{
     return false;
 }
 fn pre_dll_has_exist()->bool{
-    let global_file_name = vec!["torch.dll", "torch_cpu.dll", "torch_cuda.dll", "c10_cuda.dll", "c10.dll", 
+    let global_file_name = vec!["torch.dll", "torch_cpu.dll", "torch_cuda.dll", "c10_cuda.dll", "c10.dll", "cudart64_110.dll",
     "uv.dll", "cudnn_ops_infer64_8.dll", "cudnn_cnn_infer64_8.dll","asmjit.dll", "zlibwapi.dll", "nvToolsExt64_1.dll", 
-    "nvfuser_codegen.dll", "cudnn64_8.dll"];
+    "nvfuser_codegen.dll", "cudnn64_8.dll", "fbgemm.dll", "fbjni.dll"];
     for name in global_file_name.iter(){
         let exec_path = getExecutablePath().unwrap();
-        let exec_dir_path = exec_path.parent().unwrap();
-        let path = exec_dir_path.join(name);
+        let exec_dir_path = exec_path.parent().unwrap().parent().unwrap();
+        let path = exec_dir_path.join("torch_dll").join(name);
         if !path.exists(){
             return false;
         }
@@ -128,6 +128,9 @@ pub async fn download_and_extract(
         let path = entry.path();
         let file_name = path.file_name().unwrap();
         let file_name = file_name.to_str().unwrap();
+        if !Path::new("torch_dll").exists() {
+            fs::create_dir("torch_dll");
+        }
         let new_path = Path::new("torch_dll").join(file_name);
         //if the file is dll, then move it to the current directory
         if is_torch_pre_dll(path.to_str().unwrap()) {
