@@ -11,14 +11,22 @@ use std::time::Instant;
 use tar::Archive;
 use zip::ZipArchive;
 
+fn getExecutablePath() -> std::io::Result<std::path::PathBuf> {
+    let path = std::env::current_exe()?;
+    Ok(path)
+}
+
 //declare a global filename array
 fn is_torch_pre_dll(path: &str)->bool{
     let global_file_name = vec!["torch.dll", "torch_cpu.dll", "torch_cuda.dll", "c10_cuda.dll", "c10.dll", 
     "uv.dll", "cudnn_ops_infer64_8.dll", "cudnn_cnn_infer64_8.dll","asmjit.dll", "zlibwapi.dll", "nvToolsExt64_1.dll", 
     "nvfuser_codegen.dll", "cudnn64_8.dll"];
+    
     //whether the path is belong to the global_file_name
-    let file_name = Path::new(path).file_name().unwrap();
-    let file_name = file_name.to_str().unwrap();
+    let exec_path = getExecutablePath().unwrap();
+    let exec_dir_path = exec_path.parent().unwrap();
+    let binding = exec_dir_path.join(path);
+    let file_name = binding.file_name().unwrap().to_str().unwrap();
     for name in global_file_name.iter(){
         if file_name == *name{
             return true;
@@ -31,7 +39,9 @@ fn pre_dll_has_exist()->bool{
     "uv.dll", "cudnn_ops_infer64_8.dll", "cudnn_cnn_infer64_8.dll","asmjit.dll", "zlibwapi.dll", "nvToolsExt64_1.dll", 
     "nvfuser_codegen.dll", "cudnn64_8.dll"];
     for name in global_file_name.iter(){
-        let path = Path::new(".").join(name);
+        let exec_path = getExecutablePath().unwrap();
+        let exec_dir_path = exec_path.parent().unwrap();
+        let path = exec_dir_path.join(name);
         if !path.exists(){
             return false;
         }
