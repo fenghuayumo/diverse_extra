@@ -6,6 +6,9 @@ fn getExecutablePath() -> std::io::Result<std::path::PathBuf> {
 }
 
 fn main() {
+    //get current cmd args
+    let args: Vec<String> = std::env::args().collect();
+    println!("{:?}", args);
     let exec_path = getExecutablePath().unwrap();
     let exec_dir_path = exec_path.parent().unwrap().join("bin");
     println!("{}",exec_dir_path.display());
@@ -19,8 +22,12 @@ fn main() {
     // println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
 
     let  mut cmd = Command::new(exec_dir_path.join("diverseshot.exe"));
-    // let path = exec_path.parent().unwrap().join("sfm") + ";" + exec_path.parent().unwrap().join("torch_dll").as_mut_os_str();
-
+    if args.len() >= 2 {
+        //get project_name from args 0
+        let arg = format!("--open_project={}", args.get(1).unwrap());
+        cmd.arg(arg);
+    }
+    
     let path = format!("{};{}", exec_dir_path.join("sfm").to_string_lossy(), exec_dir_path.join("torch_dll").to_string_lossy());
     println!("path: {}", path);
     cmd.env("PATH", path);

@@ -23,14 +23,17 @@ fn is_torch_pre_dll(path: &str)->bool{
     "nvfuser_codegen.dll", "cudnn64_8.dll", "fbgemm.dll", "fbjni.dll"];
     
     //whether the path is belong to the global_file_name
-    let exec_path = getExecutablePath().unwrap();
-    let exec_dir_path = exec_path.parent().unwrap();
-    let binding = exec_dir_path.join(path);
-    let file_name = binding.file_name().unwrap().to_str().unwrap();
-    for name in global_file_name.iter(){
-        if file_name == *name{
-            return true;
-        }
+    // let exec_path = getExecutablePath().unwrap();
+    // let exec_dir_path = exec_path.parent().unwrap();
+    // let binding = exec_dir_path.join(path);
+    // let file_name = binding.file_name().unwrap().to_str().unwrap();
+    // for name in global_file_name.iter(){
+    //     if file_name == *name{
+    //         return true;
+    //     }
+    // }
+    if path.ends_with("dll"){
+        return true;
     }
     return false;
 }
@@ -40,8 +43,9 @@ fn pre_dll_has_exist()->bool{
     "nvfuser_codegen.dll", "cudnn64_8.dll", "fbgemm.dll", "fbjni.dll"];
     for name in global_file_name.iter(){
         let exec_path = getExecutablePath().unwrap();
-        let exec_dir_path = exec_path.parent().unwrap().parent().unwrap();
+        let exec_dir_path = exec_path.parent().unwrap();
         let path = exec_dir_path.join("torch_dll").join(name);
+        println!("{:?}", path);
         if !path.exists(){
             return false;
         }
