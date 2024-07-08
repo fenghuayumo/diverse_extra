@@ -40,12 +40,12 @@ fn is_torch_pre_dll(path: &str)->bool{
 fn pre_dll_has_exist()->bool{
     let global_file_name = vec!["torch.dll", "torch_cpu.dll", "torch_cuda.dll", "c10_cuda.dll", "c10.dll", "cudart64_110.dll",
     "uv.dll", "cudnn_ops_infer64_8.dll", "cudnn_cnn_infer64_8.dll","asmjit.dll", "zlibwapi.dll", "nvToolsExt64_1.dll", 
-    "nvfuser_codegen.dll", "cudnn64_8.dll", "fbgemm.dll", "fbjni.dll"];
+    "nvfuser_codegen.dll", "cudnn64_8.dll", "fbgemm.dll", "fbjni.dll", "libiomp5md.dll", "libiompstubs5md.dll", 
+    "cublas64_11.dll", "cublasLt64_11.dll","cudnn64_8.dll","cufft64_10.dll","cufftw64_10.dll"];
     for name in global_file_name.iter(){
         let exec_path = getExecutablePath().unwrap();
         let exec_dir_path = exec_path.parent().unwrap();
         let path = exec_dir_path.join("torch_dll").join(name);
-        println!("{:?}", path);
         if !path.exists(){
             return false;
         }
