@@ -13,7 +13,7 @@ fn pre_dll_has_exist()->bool{
     for name in global_file_name.iter(){
         let exec_path = getExecutablePath().unwrap();
         let exec_dir_path = exec_path.parent().unwrap();
-        let path = exec_dir_path.join("torch_dll").join(name);
+        let path = exec_dir_path.join("bin").join("torch_dll").join(name);
         if !path.exists(){
             return false;
         }
