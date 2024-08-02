@@ -1,3 +1,4 @@
+use eframe::egui::mutex::MutexGuard;
 use flate2::read::GzDecoder;
 use futures::stream::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -10,7 +11,10 @@ use std::path::Path;
 use std::time::Instant;
 use tar::Archive;
 use zip::ZipArchive;
-
+use egui::{Context, Ui, Button, Label, TopBottomPanel};
+// use eframe::{App, Frame};
+use eframe::egui::{self};
+use std::sync::{Arc, Mutex};
 fn getExecutablePath() -> std::io::Result<std::path::PathBuf> {
     let path = std::env::current_exe()?;
     Ok(path)
@@ -45,7 +49,7 @@ fn pre_dll_has_exist()->bool{
     for name in global_file_name.iter(){
         let exec_path = getExecutablePath().unwrap();
         let exec_dir_path = exec_path.parent().unwrap();
-        let path = exec_dir_path.join("torch_dll").join(name);
+        let path = exec_dir_path.join("bin").join("torch_dll").join(name);
         if !path.exists(){
             return false;
         }
@@ -56,6 +60,7 @@ fn pre_dll_has_exist()->bool{
 pub async fn download_and_extract(
     url: &str,
     output_path: &str,
+    progress: & mut f32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if pre_dll_has_exist() {
         println!("The prerequisite  package has existed, no need to download again");
@@ -89,22 +94,11 @@ pub async fn download_and_extract(
         let new = downloaded + (chunk.len() as u64);
         downloaded = new;
         pb.set_position(new);
+        *progress = new as f32 / total_size as f32;
     }
 
-    pb.finish_with_message(format!("Downloaded {} to {}", url, output_path));
+    pb.finish_with_message(format!("Downloaded torch to {}", output_path));
 
-    // 解压文件
-    // let file = File::open(output_path)?;
-    // let mut archive = Archive::new(GzDecoder::new(file));
-    // for entry in archive.entries()? {
-    //     let mut entry = entry?;
-    //     let path = entry.path()?;
-    //     let dest = Path::new(output_path).join(path);
-    //     if let Some(parent) = dest.parent() {
-    //         fs::create_dir_all(parent)?;
-    //     }
-    //     entry.unpack(dest)?;
-    // }
     println!("Unzip file....");
     let zip_file = File::open(output_path)?;
     let mut archive = ZipArchive::new(zip_file)?;
@@ -150,13 +144,147 @@ pub async fn download_and_extract(
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+// // #[tokio::main]
+// // async fn main() -> Result<(), Box<dyn std::error::Error>> {
+// //     // let url = "https://github.com/zhengzhang01/Pixel-GS/archive/refs/heads/main.zip";
+// //     let url = "https://download.pytorch.org/libtorch/cu118/libtorch-win-shared-with-deps-2.1.2%2Bcu118.zip";
+// //     let output_path = "temp.zip";
+
+// //     download_and_extract(url, output_path).await?;
+
+// //     Ok(())
+// // }
+
+#[derive(PartialEq)]
+enum UpdateState {
+    Idle,
+    InProgress,
+    Finished,
+}
+
+impl Default for UpdateState {
+    fn default() -> Self {
+        UpdateState::Idle
+    }
+}
+
+#[derive(Default)]
+struct DiverseUpdateApp {
+    update_state: UpdateState,
+    progress: f32,
+}
+
+async fn async_run(progress : & mut MutexGuard<'_, f32>) -> Result<(), Box<dyn std::error::Error>> {
     // let url = "https://github.com/zhengzhang01/Pixel-GS/archive/refs/heads/main.zip";
     let url = "https://download.pytorch.org/libtorch/cu118/libtorch-win-shared-with-deps-2.1.2%2Bcu118.zip";
     let output_path = "temp.zip";
 
-    download_and_extract(url, output_path).await?;
+    download_and_extract(url, output_path, progress).await?;
 
     Ok(())
 }
+
+impl eframe::App for DiverseUpdateApp {
+    fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        TopBottomPanel::top("top_panel").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                
+            });
+        });
+
+        if self.update_state == UpdateState::InProgress {
+            self.progress += 0.01;
+            if self.progress >= 1.0 {
+                self.update_state = UpdateState::Finished;
+                self.progress = 0.0;
+            }
+        }
+
+        // 显示更新进度条
+        egui::CentralPanel::default().show(ctx, |ui| {
+            if self.update_state == UpdateState::InProgress {
+                ui.add(egui::ProgressBar::new(self.progress));
+            }
+        });
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if pre_dll_has_exist() {
+        println!("The prerequisite  package has existed, no need to download again");
+        return  Ok(());
+    }
+
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0])
+        .with_minimize_button(false).with_maximize_button(false).with_resizable(false),
+        ..Default::default()
+    };
+    let mut app = Box::<DiverseUpdateApp>::default();
+    let  progress = Arc::new(Mutex::new(app.progress));
+    tokio::spawn(async move {
+        let mut progress = progress.lock().unwrap();
+        async_run(&mut progress).await;
+    });
+    eframe::run_native(
+        "Download",
+        native_options,
+        Box::new(|cc|  Ok(app)),
+    )
+    .unwrap();
+    Ok(())
+}
+// struct MyApp {
+//     name: String,
+//     age: u32,
+// }
+
+// impl Default for MyApp {
+//     fn default() -> Self {
+//         Self {
+//             name: "Arthur".to_owned(),
+//             age: 42,
+//         }
+//     }
+// }
+
+// impl eframe::App for MyApp {
+//     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+//         egui::CentralPanel::default().show(ctx, |ui| {
+//             ui.heading("My egui Application");
+//             ui.horizontal(|ui| {
+//                 let name_label = ui.label("Your name: ");
+//                 ui.text_edit_singleline(&mut self.name)
+//                     .labelled_by(name_label.id);
+//             });
+//             ui.add(egui::Slider::new(&mut self.age, 0..=120).text("age"));
+//             if ui.button("Increment").clicked() {
+//                 self.age += 1;
+//             }
+//             ui.label(format!("Hello '{}', age {}", self.name, self.age));
+
+//             // ui.image(egui::include_image!(
+//             //     "../../../crates/egui/assets/ferris.png"
+//             // ));
+//         });
+//     }
+// }
+// fn main() -> eframe::Result {
+//     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
+//     let options = eframe::NativeOptions {
+//         viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0])
+//         .with_minimize_button(false).with_maximize_button(false).with_resizable(false),
+//         ..Default::default()
+//     };
+//     eframe::run_native(
+//         "My egui App",
+//         options,
+//         Box::new(|cc| {
+//             // This gives us image support:
+//             egui_extras::install_image_loaders(&cc.egui_ctx);
+
+//             Ok(Box::<MyApp>::default())
+//         }),
+//     )
+// }
