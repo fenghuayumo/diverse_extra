@@ -13,8 +13,35 @@ use tar::Archive;
 use zip::ZipArchive;
 use egui::{Context, Ui, Button, Label, TopBottomPanel};
 // use eframe::{App, Frame};
-use eframe::egui::{self};
+use eframe::egui::{self, text};
 use std::sync::{Arc, Mutex};
+use std::fmt;
+
+#[derive(PartialEq, Eq)]
+enum DownloadStatus {
+    NotStarted,
+    Downloading,
+    Finished,
+    Unziping,
+}
+
+impl Default for DownloadStatus {
+    fn default() -> Self {
+        DownloadStatus::NotStarted
+    }  
+}
+
+impl fmt::Display for DownloadStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DownloadStatus::NotStarted => write!(f, "Not Started"),
+            DownloadStatus::Downloading => write!(f, "Downloading..."),
+            DownloadStatus::Finished => write!(f, "Finished"),
+            DownloadStatus::Unziping => write!(f, "Unziping..."),
+        }
+    }
+}
+
 fn getExecutablePath() -> std::io::Result<std::path::PathBuf> {
     let path = std::env::current_exe()?;
     Ok(path)
@@ -60,7 +87,8 @@ fn pre_dll_has_exist()->bool{
 pub async fn download_and_extract(
     url: &str,
     output_path: &str,
-    progress: Arc<Mutex<f32>>
+    progress: Arc<Mutex<f32>>,
+    status : Arc<Mutex<DownloadStatus>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if pre_dll_has_exist() {
         println!("The prerequisite  package has existed, no need to download again");
@@ -70,6 +98,7 @@ pub async fn download_and_extract(
     let res = client.get(url).send().await?;
     let total_size = res.content_length().ok_or("Failed to get content length")?;
 
+    *status.lock().unwrap() = DownloadStatus::Downloading;
     let pb: Arc<ProgressBar> = Arc::new(ProgressBar::new(total_size));
     pb.set_style(ProgressStyle::default_bar()
         .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
@@ -88,9 +117,12 @@ pub async fn download_and_extract(
         pb.set_position(new);
         *(progress.lock().unwrap() )= new as f32 / total_size as f32;
     }
+    *status.lock().unwrap() = DownloadStatus::Finished;
     pb.finish_with_message(format!("Downloaded torch to {}", output_path));
     
     println!("Unzip file....");
+    *status.lock().unwrap() = DownloadStatus::Unziping;
+
     let zip_file = File::open(output_path)?;
     let mut archive = ZipArchive::new(zip_file)?;
     for i in 0..archive.len() {
@@ -148,15 +180,16 @@ pub async fn download_and_extract(
 
 #[derive(Default)]
 struct DiverseUpdateApp {
-    progress: Arc<Mutex<f32>>
+    progress: Arc<Mutex<f32>>,
+    download_status: Arc<Mutex<DownloadStatus>>,
 }
 
-async fn async_run(progress: Arc<Mutex<f32>>) -> Result<(), Box<dyn std::error::Error>> {
+async fn async_run(progress: Arc<Mutex<f32>>, status : Arc<Mutex<DownloadStatus>>) -> Result<(), Box<dyn std::error::Error>> {
     // let url = "https://github.com/zhengzhang01/Pixel-GS/archive/refs/heads/main.zip";
     let url = "https://download.pytorch.org/libtorch/cu118/libtorch-win-shared-with-deps-2.1.2%2Bcu118.zip";
     let output_path = "temp.zip";
 
-    download_and_extract(url, output_path, progress).await?;
+    download_and_extract(url, output_path, progress,status).await?;
     Ok(())
 }
 
@@ -164,18 +197,26 @@ impl DiverseUpdateApp {
     fn new() -> Self {
         DiverseUpdateApp {
             progress: Arc::new(Mutex::new(0.0)), // 初始化 progress 为 0.0
+            download_status: Arc::new(Mutex::new(DownloadStatus::NotStarted)),
         }
     }
 }
 
 impl eframe::App for DiverseUpdateApp {
     fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
-        // 显示更新进度条
+        // 显示更新进度条``
         let  progess = self.progress.lock().unwrap();
+        // set progress bar on windows center 
         egui::CentralPanel::default().show(ctx, |ui| {
+            let window_size = ui.available_size();
+
+            // ui.add(egui::Label::new("Downloading..."));
+            // ui.heading("Downloading...");
+            // ui.label(format!("Progress: {:.2}%", *progess * 100.0));
+            ui.label(self.download_status.lock().unwrap().to_string());
+            ui.add_space(window_size.y / 2.0 - 30.0);
             ui.add(egui::ProgressBar::new(*progess).show_percentage().animate(true));
         });
-
     }
 }
 
@@ -187,17 +228,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([600.0, 240.0])
+        viewport: egui::ViewportBuilder::default().with_inner_size([480.0, 160.0])
         .with_minimize_button(false).with_maximize_button(false).with_resizable(false),
         ..Default::default()
     };
     let app = DiverseUpdateApp::new();
     let progress = app.progress.clone();
+    let status = app.download_status.clone();
     tokio::spawn(async move {
-        async_run(progress).await;
+        async_run(progress, status).await;
     });
     eframe::run_native(
-        "Download",
+        "diverse_update",
         native_options,
         Box::new(|_|  Ok(Box::new(app))),
     )
