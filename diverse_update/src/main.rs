@@ -60,45 +60,36 @@ fn pre_dll_has_exist()->bool{
 pub async fn download_and_extract(
     url: &str,
     output_path: &str,
-    progress: & mut f32,
+    progress: Arc<Mutex<f32>>
 ) -> Result<(), Box<dyn std::error::Error>> {
     if pre_dll_has_exist() {
         println!("The prerequisite  package has existed, no need to download again");
         return Ok(());
     }
-    // 创建一个 Reqwest 客户端
     let client = Client::new();
-
-    // 下载文件
     let res = client.get(url).send().await?;
-
-    // 获取文件大小
     let total_size = res.content_length().ok_or("Failed to get content length")?;
 
-    // 设置进度条
-    let pb = ProgressBar::new(total_size);
+    let pb: Arc<ProgressBar> = Arc::new(ProgressBar::new(total_size));
     pb.set_style(ProgressStyle::default_bar()
         .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
         .progress_chars("#>-"));
     pb.set_message(format!("Downloading prerequisite  package : torch"));
-
-    // 创建一个文件用于保存下载的文件
+    
     let mut file = File::create(output_path)?;
-
-    // 读取响应流并写入文件
     let mut stream = res.bytes_stream();
     let mut downloaded: u64 = 0;
+
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
         file.write_all(&chunk)?;
         let new = downloaded + (chunk.len() as u64);
         downloaded = new;
         pb.set_position(new);
-        *progress = new as f32 / total_size as f32;
+        *(progress.lock().unwrap() )= new as f32 / total_size as f32;
     }
-
     pb.finish_with_message(format!("Downloaded torch to {}", output_path));
-
+    
     println!("Unzip file....");
     let zip_file = File::open(output_path)?;
     let mut archive = ZipArchive::new(zip_file)?;
@@ -155,57 +146,36 @@ pub async fn download_and_extract(
 // //     Ok(())
 // // }
 
-#[derive(PartialEq)]
-enum UpdateState {
-    Idle,
-    InProgress,
-    Finished,
-}
-
-impl Default for UpdateState {
-    fn default() -> Self {
-        UpdateState::Idle
-    }
-}
-
 #[derive(Default)]
 struct DiverseUpdateApp {
-    update_state: UpdateState,
-    progress: f32,
+    progress: Arc<Mutex<f32>>
 }
 
-async fn async_run(progress : & mut MutexGuard<'_, f32>) -> Result<(), Box<dyn std::error::Error>> {
+async fn async_run(progress: Arc<Mutex<f32>>) -> Result<(), Box<dyn std::error::Error>> {
     // let url = "https://github.com/zhengzhang01/Pixel-GS/archive/refs/heads/main.zip";
     let url = "https://download.pytorch.org/libtorch/cu118/libtorch-win-shared-with-deps-2.1.2%2Bcu118.zip";
     let output_path = "temp.zip";
 
     download_and_extract(url, output_path, progress).await?;
-
     Ok(())
+}
+
+impl DiverseUpdateApp {
+    fn new() -> Self {
+        DiverseUpdateApp {
+            progress: Arc::new(Mutex::new(0.0)), // 初始化 progress 为 0.0
+        }
+    }
 }
 
 impl eframe::App for DiverseUpdateApp {
     fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
-        TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                
-            });
-        });
-
-        if self.update_state == UpdateState::InProgress {
-            self.progress += 0.01;
-            if self.progress >= 1.0 {
-                self.update_state = UpdateState::Finished;
-                self.progress = 0.0;
-            }
-        }
-
         // 显示更新进度条
+        let  progess = self.progress.lock().unwrap();
         egui::CentralPanel::default().show(ctx, |ui| {
-            if self.update_state == UpdateState::InProgress {
-                ui.add(egui::ProgressBar::new(self.progress));
-            }
+            ui.add(egui::ProgressBar::new(*progess).show_percentage().animate(true));
         });
+
     }
 }
 
@@ -217,74 +187,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0])
+        viewport: egui::ViewportBuilder::default().with_inner_size([600.0, 240.0])
         .with_minimize_button(false).with_maximize_button(false).with_resizable(false),
         ..Default::default()
     };
-    let mut app = Box::<DiverseUpdateApp>::default();
-    let  progress = Arc::new(Mutex::new(app.progress));
+    let app = DiverseUpdateApp::new();
+    let progress = app.progress.clone();
     tokio::spawn(async move {
-        let mut progress = progress.lock().unwrap();
-        async_run(&mut progress).await;
+        async_run(progress).await;
     });
     eframe::run_native(
         "Download",
         native_options,
-        Box::new(|cc|  Ok(app)),
+        Box::new(|_|  Ok(Box::new(app))),
     )
     .unwrap();
     Ok(())
 }
-// struct MyApp {
-//     name: String,
-//     age: u32,
-// }
-
-// impl Default for MyApp {
-//     fn default() -> Self {
-//         Self {
-//             name: "Arthur".to_owned(),
-//             age: 42,
-//         }
-//     }
-// }
-
-// impl eframe::App for MyApp {
-//     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-//         egui::CentralPanel::default().show(ctx, |ui| {
-//             ui.heading("My egui Application");
-//             ui.horizontal(|ui| {
-//                 let name_label = ui.label("Your name: ");
-//                 ui.text_edit_singleline(&mut self.name)
-//                     .labelled_by(name_label.id);
-//             });
-//             ui.add(egui::Slider::new(&mut self.age, 0..=120).text("age"));
-//             if ui.button("Increment").clicked() {
-//                 self.age += 1;
-//             }
-//             ui.label(format!("Hello '{}', age {}", self.name, self.age));
-
-//             // ui.image(egui::include_image!(
-//             //     "../../../crates/egui/assets/ferris.png"
-//             // ));
-//         });
-//     }
-// }
-// fn main() -> eframe::Result {
-//     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
-//     let options = eframe::NativeOptions {
-//         viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0])
-//         .with_minimize_button(false).with_maximize_button(false).with_resizable(false),
-//         ..Default::default()
-//     };
-//     eframe::run_native(
-//         "My egui App",
-//         options,
-//         Box::new(|cc| {
-//             // This gives us image support:
-//             egui_extras::install_image_loaders(&cc.egui_ctx);
-
-//             Ok(Box::<MyApp>::default())
-//         }),
-//     )
-// }
