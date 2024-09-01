@@ -1,4 +1,7 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
+#![allow(rustdoc::missing_crate_level_docs)] // it's an example
 use eframe::egui::mutex::MutexGuard;
+use egui::{Button, Context, Label, TopBottomPanel, Ui};
 use flate2::read::GzDecoder;
 use futures::stream::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -11,24 +14,23 @@ use std::path::Path;
 use std::time::Instant;
 use tar::Archive;
 use zip::ZipArchive;
-use egui::{Context, Ui, Button, Label, TopBottomPanel};
 // use eframe::{App, Frame};
 use eframe::egui::{self, text};
-use std::sync::{Arc, Mutex};
 use std::fmt;
+use std::sync::{Arc, Mutex};
 
 #[derive(PartialEq, Eq)]
 enum DownloadStatus {
     NotStarted,
     Downloading,
-    Finished,
     Unziping,
+    Finished,
 }
 
 impl Default for DownloadStatus {
     fn default() -> Self {
         DownloadStatus::NotStarted
-    }  
+    }
 }
 
 impl fmt::Display for DownloadStatus {
@@ -36,8 +38,8 @@ impl fmt::Display for DownloadStatus {
         match self {
             DownloadStatus::NotStarted => write!(f, "Not Started"),
             DownloadStatus::Downloading => write!(f, "Downloading..."),
-            DownloadStatus::Finished => write!(f, "Finished"),
             DownloadStatus::Unziping => write!(f, "Unziping..."),
+            DownloadStatus::Finished => write!(f, "Finished"),
         }
     }
 }
@@ -48,11 +50,26 @@ fn getExecutablePath() -> std::io::Result<std::path::PathBuf> {
 }
 
 //declare a global filename array
-fn is_torch_pre_dll(path: &str)->bool{
-    let global_file_name = vec!["torch.dll", "torch_cpu.dll", "torch_cuda.dll", "c10_cuda.dll", "c10.dll", "cudart64_110.dll",
-    "uv.dll", "cudnn_ops_infer64_8.dll", "cudnn_cnn_infer64_8.dll","asmjit.dll", "zlibwapi.dll", "nvToolsExt64_1.dll", 
-    "nvfuser_codegen.dll", "cudnn64_8.dll", "fbgemm.dll", "fbjni.dll"];
-    
+fn is_torch_pre_dll(path: &str) -> bool {
+    let global_file_name = vec![
+        "torch.dll",
+        "torch_cpu.dll",
+        "torch_cuda.dll",
+        "c10_cuda.dll",
+        "c10.dll",
+        "cudart64_110.dll",
+        "uv.dll",
+        "cudnn_ops_infer64_8.dll",
+        "cudnn_cnn_infer64_8.dll",
+        "asmjit.dll",
+        "zlibwapi.dll",
+        "nvToolsExt64_1.dll",
+        "nvfuser_codegen.dll",
+        "cudnn64_8.dll",
+        "fbgemm.dll",
+        "fbjni.dll",
+    ];
+
     //whether the path is belong to the global_file_name
     // let exec_path = getExecutablePath().unwrap();
     // let exec_dir_path = exec_path.parent().unwrap();
@@ -63,21 +80,46 @@ fn is_torch_pre_dll(path: &str)->bool{
     //         return true;
     //     }
     // }
-    if path.ends_with("dll"){
+    if path.ends_with("dll") {
         return true;
     }
     return false;
 }
-fn pre_dll_has_exist()->bool{
-    let global_file_name = vec!["torch.dll", "torch_cpu.dll", "torch_cuda.dll", "c10_cuda.dll", "c10.dll", "cudart64_110.dll",
-    "uv.dll", "cudnn_ops_infer64_8.dll", "cudnn_cnn_infer64_8.dll","asmjit.dll", "zlibwapi.dll", "nvToolsExt64_1.dll", 
-    "nvfuser_codegen.dll", "cudnn64_8.dll", "fbgemm.dll", "fbjni.dll", "libiomp5md.dll", "libiompstubs5md.dll", 
-    "cublas64_11.dll", "cublasLt64_11.dll","cudnn64_8.dll","cufft64_10.dll","cufftw64_10.dll"];
-    for name in global_file_name.iter(){
-        let exec_path = getExecutablePath().unwrap();
-        let exec_dir_path = exec_path.parent().unwrap();
-        let path = exec_dir_path.join("bin").join("torch_dll").join(name);
-        if !path.exists(){
+fn pre_dll_has_exist() -> bool {
+    let global_file_name = vec![
+        "torch.dll",
+        "torch_cpu.dll",
+        "torch_cuda.dll",
+        "c10_cuda.dll",
+        "c10.dll",
+        "cudart64_110.dll",
+        "uv.dll",
+        "cudnn_ops_infer64_8.dll",
+        "cudnn_cnn_infer64_8.dll",
+        "asmjit.dll",
+        "zlibwapi.dll",
+        "nvToolsExt64_1.dll",
+        "nvfuser_codegen.dll",
+        "cudnn64_8.dll",
+        "fbgemm.dll",
+        "fbjni.dll",
+        "libiomp5md.dll",
+        "libiompstubs5md.dll",
+        "cublas64_11.dll",
+        "cublasLt64_11.dll",
+        "cudnn64_8.dll",
+        "cufft64_10.dll",
+        "cufftw64_10.dll",
+    ];
+    let exec_path = getExecutablePath().unwrap();
+    let exec_dir_path = exec_path.parent().unwrap();
+    if exec_dir_path.join("bin").join("torch_dll").exists() {
+        //delete the old torch_dll folder
+        fs::remove_dir_all(exec_dir_path.join("bin").join("torch_dll"));
+    }
+    for name in global_file_name.iter() {
+        let newpath = exec_dir_path.join("bin").join(".").join(name);
+        if !newpath.exists() {
             return false;
         }
     }
@@ -88,7 +130,7 @@ pub async fn download_and_extract(
     url: &str,
     output_path: &str,
     progress: Arc<Mutex<f32>>,
-    status : Arc<Mutex<DownloadStatus>>,
+    status: Arc<Mutex<DownloadStatus>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if pre_dll_has_exist() {
         println!("The prerequisite  package has existed, no need to download again");
@@ -104,7 +146,7 @@ pub async fn download_and_extract(
         .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
         .progress_chars("#>-"));
     pb.set_message(format!("Downloading prerequisite  package : torch"));
-    
+
     let mut file = File::create(output_path)?;
     let mut stream = res.bytes_stream();
     let mut downloaded: u64 = 0;
@@ -115,11 +157,10 @@ pub async fn download_and_extract(
         let new = downloaded + (chunk.len() as u64);
         downloaded = new;
         pb.set_position(new);
-        *(progress.lock().unwrap() )= new as f32 / total_size as f32;
+        *(progress.lock().unwrap()) = new as f32 / total_size as f32;
     }
-    *status.lock().unwrap() = DownloadStatus::Finished;
     pb.finish_with_message(format!("Downloaded torch to {}", output_path));
-    
+
     println!("Unzip file....");
     *status.lock().unwrap() = DownloadStatus::Unziping;
 
@@ -149,21 +190,21 @@ pub async fn download_and_extract(
         let path = entry.path();
         let file_name = path.file_name().unwrap();
         let file_name = file_name.to_str().unwrap();
-        if !Path::new("torch_dll").exists() {
-            fs::create_dir("torch_dll");
-        }
-        let new_path = Path::new("torch_dll").join(file_name);
+        // if !Path::new("torch_dll").exists() {
+        //     fs::create_dir("torch_dll");
+        // }
+        let new_path = Path::new(".").join(file_name);
         //if the file is dll, then move it to the current directory
         if is_torch_pre_dll(path.to_str().unwrap()) {
             fs::rename(path, new_path)?;
         }
         // fs::rename(path, new_path)?;
-        
     }
     println!("Move completed");
     // delete the extracted folder
     fs::remove_file(output_path)?;
     fs::remove_dir_all("libtorch")?;
+    *status.lock().unwrap() = DownloadStatus::Finished;
     Ok(())
 }
 
@@ -182,14 +223,18 @@ pub async fn download_and_extract(
 struct DiverseUpdateApp {
     progress: Arc<Mutex<f32>>,
     download_status: Arc<Mutex<DownloadStatus>>,
+    image_data: Option<Vec<u8>>,
 }
 
-async fn async_run(progress: Arc<Mutex<f32>>, status : Arc<Mutex<DownloadStatus>>) -> Result<(), Box<dyn std::error::Error>> {
+async fn async_run(
+    progress: Arc<Mutex<f32>>,
+    status: Arc<Mutex<DownloadStatus>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     // let url = "https://github.com/zhengzhang01/Pixel-GS/archive/refs/heads/main.zip";
     let url = "https://download.pytorch.org/libtorch/cu118/libtorch-win-shared-with-deps-2.1.2%2Bcu118.zip";
     let output_path = "temp.zip";
 
-    download_and_extract(url, output_path, progress,status).await?;
+    download_and_extract(url, output_path, progress, status).await?;
     Ok(())
 }
 
@@ -198,6 +243,7 @@ impl DiverseUpdateApp {
         DiverseUpdateApp {
             progress: Arc::new(Mutex::new(0.0)), // 初始化 progress 为 0.0
             download_status: Arc::new(Mutex::new(DownloadStatus::NotStarted)),
+            image_data: None,
         }
     }
 }
@@ -205,17 +251,25 @@ impl DiverseUpdateApp {
 impl eframe::App for DiverseUpdateApp {
     fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
         // 显示更新进度条``
-        let  progess = self.progress.lock().unwrap();
-        // set progress bar on windows center 
+        let progess = self.progress.lock().unwrap();
+        // set progress bar on windows center
         egui::CentralPanel::default().show(ctx, |ui| {
+            ui.ctx().set_visuals(egui::Visuals::dark());
+            let image = egui::Image::new(egui::include_image!("../assets/images/logo.png"))
+                .fit_to_exact_size(ui.available_size());
+            image.paint_at(ui, ui.available_rect_before_wrap());
             let window_size = ui.available_size();
-
-            // ui.add(egui::Label::new("Downloading..."));
-            // ui.heading("Downloading...");
-            // ui.label(format!("Progress: {:.2}%", *progess * 100.0));
             ui.label(self.download_status.lock().unwrap().to_string());
             ui.add_space(window_size.y / 2.0 - 30.0);
-            ui.add(egui::ProgressBar::new(*progess).show_percentage().animate(true));
+            ui.add(
+                egui::ProgressBar::new(*progess)
+                    .desired_height(25.0)
+                    .show_percentage()
+                    .animate(true),
+            );
+            if *self.download_status.lock().unwrap() == DownloadStatus::Finished {
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+            }
         });
     }
 }
@@ -224,12 +278,15 @@ impl eframe::App for DiverseUpdateApp {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if pre_dll_has_exist() {
         println!("The prerequisite  package has existed, no need to download again");
-        return  Ok(());
+        return Ok(());
     }
 
     let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([480.0, 160.0])
-        .with_minimize_button(false).with_maximize_button(false).with_resizable(false),
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([480.0, 160.0])
+            .with_minimize_button(false)
+            .with_maximize_button(false)
+            .with_resizable(false),
         ..Default::default()
     };
     let app = DiverseUpdateApp::new();
@@ -239,9 +296,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         async_run(progress, status).await;
     });
     eframe::run_native(
-        "diverse_update",
+        "diverse_download",
         native_options,
-        Box::new(|_|  Ok(Box::new(app))),
+        Box::new(|cc| {
+            egui_extras::install_image_loaders(&cc.egui_ctx);
+            Ok(Box::new(app))
+        }),
     )
     .unwrap();
     Ok(())
