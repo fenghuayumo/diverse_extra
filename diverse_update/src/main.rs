@@ -113,12 +113,18 @@ fn pre_dll_has_exist() -> bool {
     ];
     let exec_path = getExecutablePath().unwrap();
     let exec_dir_path = exec_path.parent().unwrap();
-    if exec_dir_path.join("bin").join("torch_dll").exists() {
+    if exec_dir_path
+        .join("Python/Lib/site-packages/torch/lib")
+        .exists()
+    {
         //delete the old torch_dll folder
-        fs::remove_dir_all(exec_dir_path.join("bin").join("torch_dll"));
+        fs::remove_dir_all(exec_dir_path.join("Python/Lib/site-packages/torch/lib"));
     }
     for name in global_file_name.iter() {
-        let newpath = exec_dir_path.join("bin").join(".").join(name);
+        let newpath = exec_dir_path
+            .join("Python/Lib/site-packages/torch/lib")
+            .join(".")
+            .join(name);
         if !newpath.exists() {
             return false;
         }
@@ -190,10 +196,7 @@ pub async fn download_and_extract(
         let path = entry.path();
         let file_name = path.file_name().unwrap();
         let file_name = file_name.to_str().unwrap();
-        // if !Path::new("torch_dll").exists() {
-        //     fs::create_dir("torch_dll");
-        // }
-        let new_path = Path::new(".").join(file_name);
+        let new_path = Path::new("../Python/Lib/site-packages/torch/lib").join(file_name);
         //if the file is dll, then move it to the current directory
         if is_torch_pre_dll(path.to_str().unwrap()) {
             fs::rename(path, new_path)?;
@@ -208,17 +211,6 @@ pub async fn download_and_extract(
     Ok(())
 }
 
-// // #[tokio::main]
-// // async fn main() -> Result<(), Box<dyn std::error::Error>> {
-// //     // let url = "https://github.com/zhengzhang01/Pixel-GS/archive/refs/heads/main.zip";
-// //     let url = "https://download.pytorch.org/libtorch/cu118/libtorch-win-shared-with-deps-2.1.2%2Bcu118.zip";
-// //     let output_path = "temp.zip";
-
-// //     download_and_extract(url, output_path).await?;
-
-// //     Ok(())
-// // }
-
 #[derive(Default)]
 struct DiverseUpdateApp {
     progress: Arc<Mutex<f32>>,
@@ -227,14 +219,13 @@ struct DiverseUpdateApp {
 }
 
 async fn async_run(
+    url: String,
     progress: Arc<Mutex<f32>>,
     status: Arc<Mutex<DownloadStatus>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // let url = "https://github.com/zhengzhang01/Pixel-GS/archive/refs/heads/main.zip";
-    let url = "https://download.pytorch.org/libtorch/cu118/libtorch-win-shared-with-deps-2.1.2%2Bcu118.zip";
     let output_path = "temp.zip";
 
-    download_and_extract(url, output_path, progress, status).await?;
+    download_and_extract(url.as_str(), output_path, progress, status).await?;
     Ok(())
 }
 
@@ -276,6 +267,12 @@ impl eframe::App for DiverseUpdateApp {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // get url from the command line
+    let mut url = "https://download.pytorch.org/libtorch/cu118/libtorch-win-shared-with-deps-2.1.2%2Bcu118.zip";
+    let args = std::env::args().collect::<Vec<String>>();
+    if args.len() >= 2 {
+        url = args[1].as_str();
+    }
     if pre_dll_has_exist() {
         println!("The prerequisite  package has existed, no need to download again");
         return Ok(());
@@ -292,8 +289,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = DiverseUpdateApp::new();
     let progress = app.progress.clone();
     let status = app.download_status.clone();
+    let url = url.to_string();
     tokio::spawn(async move {
-        async_run(progress, status).await;
+        async_run(url, progress, status).await;
     });
     eframe::run_native(
         "diverse_download",

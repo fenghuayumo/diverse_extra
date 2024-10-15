@@ -17,7 +17,17 @@ futures = "0.3.30"
 tar = "0.4.40"
 flate2 = "1.0.28"
 # egui = "0.28.1"
-eframe = "0.28.1"
-egui_extras = "0.28.1"
+eframe = "0.29.1"
+egui_extras = "0.29.1"
 env_logger = "0.11.5"
 image = { version = "0.25.2", features = ["jpeg", "png"]}
+glow = "0.14"
+glutin = "0.32.0"
+glutin-winit = "0.5.0"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = "0.3.58"
+wgpu = { version = "22.0.0", default-features = false, features = [
+    # Make the renderer `Sync` even on wasm32, because it makes the code simpler:
+    "fragile-send-sync-non-atomic-wasm",
+] }
