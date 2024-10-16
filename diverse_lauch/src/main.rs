@@ -1,306 +1,99 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
-#![allow(rustdoc::missing_crate_level_docs)] // it's an example
-use eframe::egui::mutex::MutexGuard;
-use egui::{Button, Context, Label, TopBottomPanel, Ui};
-use flate2::read::GzDecoder;
-use futures::stream::StreamExt;
-use indicatif::{ProgressBar, ProgressStyle};
-use reqwest::Client;
+use std::process::Command;
 use std::fs;
-use std::fs::File;
-use std::io::BufReader;
-use std::io::{prelude::*, Bytes};
-use std::path::Path;
-use std::time::Instant;
-use tar::Archive;
-use zip::ZipArchive;
-// use eframe::{App, Frame};
-use eframe::egui::{self, text};
-use std::fmt;
-use std::sync::{Arc, Mutex};
-
-#[derive(PartialEq, Eq)]
-enum DownloadStatus {
-    NotStarted,
-    Downloading,
-    Unziping,
-    Finished,
-}
-
-impl Default for DownloadStatus {
-    fn default() -> Self {
-        DownloadStatus::NotStarted
-    }
-}
-
-impl fmt::Display for DownloadStatus {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            DownloadStatus::NotStarted => write!(f, "Not Started"),
-            DownloadStatus::Downloading => write!(f, "Downloading..."),
-            DownloadStatus::Unziping => write!(f, "Unziping..."),
-            DownloadStatus::Finished => write!(f, "Finished"),
-        }
-    }
-}
-
 fn getExecutablePath() -> std::io::Result<std::path::PathBuf> {
     let path = std::env::current_exe()?;
     Ok(path)
 }
 
-//declare a global filename array
-fn is_torch_pre_dll(path: &str) -> bool {
-    let global_file_name = vec![
-        "torch.dll",
-        "torch_cpu.dll",
-        "torch_cuda.dll",
-        "c10_cuda.dll",
-        "c10.dll",
-        "cudart64_110.dll",
-        "uv.dll",
-        "cudnn_ops_infer64_8.dll",
-        "cudnn_cnn_infer64_8.dll",
-        "asmjit.dll",
-        "zlibwapi.dll",
-        "nvToolsExt64_1.dll",
-        "nvfuser_codegen.dll",
-        "cudnn64_8.dll",
-        "fbgemm.dll",
-        "fbjni.dll",
-    ];
-
-    //whether the path is belong to the global_file_name
-    // let exec_path = getExecutablePath().unwrap();
-    // let exec_dir_path = exec_path.parent().unwrap();
-    // let binding = exec_dir_path.join(path);
-    // let file_name = binding.file_name().unwrap().to_str().unwrap();
-    // for name in global_file_name.iter(){
-    //     if file_name == *name{
-    //         return true;
-    //     }
-    // }
-    if path.ends_with("dll") {
-        return true;
-    }
-    return false;
-}
-fn pre_dll_has_exist() -> bool {
-    let global_file_name = vec![
-        "torch.dll",
-        "torch_cpu.dll",
-        "torch_cuda.dll",
-        "c10_cuda.dll",
-        "c10.dll",
-        "cudart64_110.dll",
-        "uv.dll",
-        "cudnn_ops_infer64_8.dll",
-        "cudnn_cnn_infer64_8.dll",
-        "asmjit.dll",
-        "zlibwapi.dll",
-        "nvToolsExt64_1.dll",
-        "nvfuser_codegen.dll",
-        "cudnn64_8.dll",
-        "fbgemm.dll",
-        "fbjni.dll",
-        "libiomp5md.dll",
-        "libiompstubs5md.dll",
-        "cublas64_11.dll",
-        "cublasLt64_11.dll",
-        "cudnn64_8.dll",
-        "cufft64_10.dll",
-        "cufftw64_10.dll",
-    ];
+fn pre_dll_has_exist()->bool{
+    let global_file_name = vec!["torch.dll", "torch_cpu.dll", "torch_cuda.dll", "c10_cuda.dll", "c10.dll", "cudart64_110.dll",
+    "uv.dll", "cudnn_ops_infer64_8.dll", "cudnn_cnn_infer64_8.dll","asmjit.dll", "zlibwapi.dll", "nvToolsExt64_1.dll", 
+    "nvfuser_codegen.dll", "cudnn64_8.dll", "fbgemm.dll", "fbjni.dll", "libiomp5md.dll", "libiompstubs5md.dll", 
+    "cublas64_11.dll", "cublasLt64_11.dll","cudnn64_8.dll","cufft64_10.dll","cufftw64_10.dll"];
     let exec_path = getExecutablePath().unwrap();
     let exec_dir_path = exec_path.parent().unwrap();
-    if exec_dir_path
-        .join("Python/Lib/site-packages/torch/lib")
-        .exists()
-    {
-        //delete the old torch_dll folder
-        fs::remove_dir_all(exec_dir_path.join("Python/Lib/site-packages/torch/lib"));
-    }
-    for name in global_file_name.iter() {
-        let newpath = exec_dir_path
-            .join("Python/Lib/site-packages/torch/lib")
-            .join(".")
-            .join(name);
+    let torch_folder = exec_dir_path
+    .join("Python/Lib/site-packages/torch/lib");
+
+    for name in global_file_name.iter(){
+        let newpath = torch_folder.join(name);
         if !newpath.exists() {
             return false;
         }
     }
     return true;
 }
-
-pub async fn download_and_extract(
-    url: &str,
-    output_path: &str,
-    progress: Arc<Mutex<f32>>,
-    status: Arc<Mutex<DownloadStatus>>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if pre_dll_has_exist() {
-        println!("The prerequisite  package has existed, no need to download again");
-        return Ok(());
-    }
-    let client = Client::new();
-    let res = client.get(url).send().await?;
-    let total_size = res.content_length().ok_or("Failed to get content length")?;
-
-    *status.lock().unwrap() = DownloadStatus::Downloading;
-    let pb: Arc<ProgressBar> = Arc::new(ProgressBar::new(total_size));
-    pb.set_style(ProgressStyle::default_bar()
-        .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
-        .progress_chars("#>-"));
-    pb.set_message(format!("Downloading prerequisite  package : torch"));
-
-    let mut file = File::create(output_path)?;
-    let mut stream = res.bytes_stream();
-    let mut downloaded: u64 = 0;
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk?;
-        file.write_all(&chunk)?;
-        let new = downloaded + (chunk.len() as u64);
-        downloaded = new;
-        pb.set_position(new);
-        *(progress.lock().unwrap()) = new as f32 / total_size as f32;
-    }
-    pb.finish_with_message(format!("Downloaded torch to {}", output_path));
-
-    println!("Unzip file....");
-    *status.lock().unwrap() = DownloadStatus::Unziping;
-
-    let zip_file = File::open(output_path)?;
-    let mut archive = ZipArchive::new(zip_file)?;
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i)?;
-        let outpath = file.sanitized_name();
-        if (&*file.name()).ends_with('/') {
-            std::fs::create_dir_all(&outpath)?;
-        } else {
-            if let Some(p) = outpath.parent() {
-                if !p.exists() {
-                    std::fs::create_dir_all(&p)?;
-                }
+fn main() {
+    //get current cmd args
+    let args: Vec<String> = std::env::args().collect();
+    let exec_path = getExecutablePath().unwrap();
+    let exec_dir_path = exec_path.parent().unwrap().join("bin");
+    //read the json file to get the dependencies torch url
+    let mut torch_url  = String::from("https://download.pytorch.org/libtorch/cu118/libtorch-win-shared-with-deps-2.1.2%2Bcu118.zip");
+    let json_path = exec_path.parent().unwrap().join("Dependencies.json");
+    if json_path.exists()  {
+        let json_str = std::fs::read_to_string(json_path.clone()).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        let dependencies = json["dependencies"].as_array().unwrap();
+        for dep in dependencies.iter() {
+            //whether dep["name"].as_str() == "torch"
+            if dep["name"].as_str().unwrap() == "torch" {
+                torch_url = dep["url"].as_str().unwrap().to_string();
             }
-            let mut outfile = File::create(&outpath)?;
-            std::io::copy(&mut file, &mut outfile)?;
         }
     }
-    println!("Unzip completed");
-    //move the extracted files to the current directory
-    let torch_dir = Path::new("libtorch/lib");
-    // let output_path = output_path.parent().unwrap();
-    for entry in fs::read_dir(torch_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        let file_name = path.file_name().unwrap();
-        let file_name = file_name.to_str().unwrap();
-        let new_path = Path::new("../Python/Lib/site-packages/torch/lib").join(file_name);
-        //if the file is dll, then move it to the current directory
-        if is_torch_pre_dll(path.to_str().unwrap()) {
-            fs::rename(path, new_path)?;
-        }
-        // fs::rename(path, new_path)?;
-    }
-    println!("Move completed");
-    // delete the extracted folder
-    fs::remove_file(output_path)?;
-    fs::remove_dir_all("libtorch")?;
-    *status.lock().unwrap() = DownloadStatus::Finished;
-    Ok(())
-}
-
-#[derive(Default)]
-struct DiverseUpdateApp {
-    progress: Arc<Mutex<f32>>,
-    download_status: Arc<Mutex<DownloadStatus>>,
-    image_data: Option<Vec<u8>>,
-}
-
-async fn async_run(
-    url: String,
-    progress: Arc<Mutex<f32>>,
-    status: Arc<Mutex<DownloadStatus>>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let output_path = "temp.zip";
-
-    download_and_extract(url.as_str(), output_path, progress, status).await?;
-    Ok(())
-}
-
-impl DiverseUpdateApp {
-    fn new() -> Self {
-        DiverseUpdateApp {
-            progress: Arc::new(Mutex::new(0.0)), // 初始化 progress 为 0.0
-            download_status: Arc::new(Mutex::new(DownloadStatus::NotStarted)),
-            image_data: None,
-        }
-    }
-}
-
-impl eframe::App for DiverseUpdateApp {
-    fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
-        // 显示更新进度条``
-        let progess = self.progress.lock().unwrap();
-        // set progress bar on windows center
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.ctx().set_visuals(egui::Visuals::dark());
-            let image = egui::Image::new(egui::include_image!("../assets/images/logo.png"))
-                .fit_to_exact_size(ui.available_size());
-            image.paint_at(ui, ui.available_rect_before_wrap());
-            let window_size = ui.available_size();
-            ui.label(self.download_status.lock().unwrap().to_string());
-            ui.add_space(window_size.y / 2.0 - 30.0);
-            ui.add(
-                egui::ProgressBar::new(*progess)
-                    .desired_height(25.0)
-                    .show_percentage()
-                    .animate(true),
-            );
-            if *self.download_status.lock().unwrap() == DownloadStatus::Finished {
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+  
+    //check update
+    let mut need_install_dep = !pre_dll_has_exist();
+    if exec_dir_path.join("AutoUpdateInCSharp.exe").exists() {
+        let mut command = Command::new(exec_dir_path.join("AutoUpdateInCSharp.exe"));
+        let arg = format!("Update");
+        command.arg(arg);
+        command.current_dir(exec_dir_path.as_path());
+        let child = command.spawn().unwrap();
+        let output = child.wait_with_output().unwrap();
+        println!("{}", String::from_utf8_lossy(&output.stdout));
+        let version_file = exec_dir_path.join("Version.json");
+        if version_file.exists() {
+            let version_str = fs::read_to_string(version_file).unwrap();
+            let version_json: serde_json::Value = serde_json::from_str(&version_str).unwrap();
+            let version_dep = version_json["dependencies"].as_str().unwrap().to_string();
+            println!("version_dep: {}", version_dep);
+            if version_dep != torch_url {
+                torch_url = version_dep;
+                need_install_dep = true;
             }
-        });
+            //write the version to the dependencies.json file
+            let json_str = fs::read_to_string(json_path.clone()).unwrap();
+            let mut json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+            json["dependencies"][0]["url"] = serde_json::Value::String(torch_url.clone());
+            let new_json_str = serde_json::to_string_pretty(&json).unwrap();
+            fs::write(json_path, new_json_str).unwrap();
+        }
     }
-}
+    //install dependencies
+    while  need_install_dep {
+        let mut command = Command::new(exec_dir_path.join("diverseupdate.exe"));
+        let arg = format!("{}", torch_url);
+        command.arg(arg);
+        command.current_dir(exec_dir_path.as_path());
+        let child = command.spawn().unwrap();
+        let output = child.wait_with_output().unwrap();
+        println!("{}", String::from_utf8_lossy(&output.stdout));
+    }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // get url from the command line
-    let mut url = "https://download.pytorch.org/libtorch/cu118/libtorch-win-shared-with-deps-2.1.2%2Bcu118.zip";
-    let args = std::env::args().collect::<Vec<String>>();
+    let  mut cmd = Command::new(exec_dir_path.join("diverseshot.exe"));
     if args.len() >= 2 {
-        url = args[1].as_str();
+        //get project_name from args 0
+        let arg = format!("--open_project={}", args.get(1).unwrap());
+        cmd.arg(arg);
     }
-    if pre_dll_has_exist() {
-        println!("The prerequisite  package has existed, no need to download again");
-        return Ok(());
-    }
-
-    let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([480.0, 160.0])
-            .with_minimize_button(false)
-            .with_maximize_button(false)
-            .with_resizable(false),
-        ..Default::default()
-    };
-    let app = DiverseUpdateApp::new();
-    let progress = app.progress.clone();
-    let status = app.download_status.clone();
-    let url = url.to_string();
-    tokio::spawn(async move {
-        async_run(url, progress, status).await;
-    });
-    eframe::run_native(
-        "diverse_download",
-        native_options,
-        Box::new(|cc| {
-            egui_extras::install_image_loaders(&cc.egui_ctx);
-            Ok(Box::new(app))
-        }),
-    )
-    .unwrap();
-    Ok(())
+    let pypath = exec_path.parent().unwrap().join("Python");
+    let path = format!("{};{}", exec_dir_path.join("sfm").to_string_lossy(), pypath.join("Lib/site-packages/torch/lib").to_string_lossy());
+    println!("path: {}", path);
+    cmd.env("PATH", path);
+    cmd.current_dir(exec_dir_path.as_path());
+    let child = cmd.spawn().unwrap();
+    // child.detach();
+    std::mem::forget(child);
 }

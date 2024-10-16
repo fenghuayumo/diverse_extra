@@ -1,4 +1,4 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
+// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 #![allow(rustdoc::missing_crate_level_docs)] // it's an example
 use eframe::egui::mutex::MutexGuard;
 use egui::{Button, Context, Label, TopBottomPanel, Ui};
@@ -69,17 +69,6 @@ fn is_torch_pre_dll(path: &str) -> bool {
         "fbgemm.dll",
         "fbjni.dll",
     ];
-
-    //whether the path is belong to the global_file_name
-    // let exec_path = getExecutablePath().unwrap();
-    // let exec_dir_path = exec_path.parent().unwrap();
-    // let binding = exec_dir_path.join(path);
-    // let file_name = binding.file_name().unwrap().to_str().unwrap();
-    // for name in global_file_name.iter(){
-    //     if file_name == *name{
-    //         return true;
-    //     }
-    // }
     if path.ends_with("dll") {
         return true;
     }
@@ -196,10 +185,18 @@ pub async fn download_and_extract(
         let path = entry.path();
         let file_name = path.file_name().unwrap();
         let file_name = file_name.to_str().unwrap();
-        let new_path = Path::new("../Python/Lib/site-packages/torch/lib").join(file_name);
-        //if the file is dll, then move it to the current directory
+        let exec_path = getExecutablePath().unwrap();
+        let exec_dir_path = exec_path.parent().unwrap();
+        let new_file = exec_dir_path
+            .join("Python/Lib/site-packages/torch/lib")
+            .join(file_name);
+        let new_path = exec_dir_path.join("Python/Lib/site-packages/torch/lib");
+        println!("Move {:?} to {:?}", path, new_file);
+        if !new_path.exists() {
+            fs::create_dir(new_path.as_path())?;
+        }
         if is_torch_pre_dll(path.to_str().unwrap()) {
-            fs::rename(path, new_path)?;
+            fs::rename(path, new_file)?;
         }
         // fs::rename(path, new_path)?;
     }
@@ -278,29 +275,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([480.0, 160.0])
-            .with_minimize_button(false)
-            .with_maximize_button(false)
-            .with_resizable(false),
-        ..Default::default()
-    };
+    // let native_options = eframe::NativeOptions {
+    //     viewport: egui::ViewportBuilder::default()
+    //         .with_inner_size([480.0, 160.0])
+    //         .with_minimize_button(false)
+    //         .with_maximize_button(false)
+    //         .with_resizable(false),
+    //     ..Default::default()
+    // };
     let app = DiverseUpdateApp::new();
     let progress = app.progress.clone();
     let status = app.download_status.clone();
     let url = url.to_string();
-    tokio::spawn(async move {
-        async_run(url, progress, status).await;
-    });
-    eframe::run_native(
-        "diverse_download",
-        native_options,
-        Box::new(|cc| {
-            egui_extras::install_image_loaders(&cc.egui_ctx);
-            Ok(Box::new(app))
-        }),
-    )
-    .unwrap();
+    // tokio::spawn(async move {
+    //     async_run(url, progress, status).await;
+    // });
+    // eframe::run_native(
+    //     "diverse_download",
+    //     native_options,
+    //     Box::new(|cc| {
+    //         egui_extras::install_image_loaders(&cc.egui_ctx);
+    //         Ok(Box::new(app))
+    //     }),
+    // )
+    // .unwrap();
+
+    let output_path = "temp.zip";
+    download_and_extract(url.as_str(), output_path, progress, status).await?;
     Ok(())
 }
