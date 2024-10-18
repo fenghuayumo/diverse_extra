@@ -45,32 +45,32 @@ fn main() {
   
     //check update
     let mut need_install_dep = !pre_dll_has_exist();
-    if exec_dir_path.join("AutoUpdateInCSharp.exe").exists() {
-        let mut command = Command::new(exec_dir_path.join("AutoUpdateInCSharp.exe"));
-        let arg = format!("Update");
-        command.arg(arg);
-        command.current_dir(exec_dir_path.as_path());
-        let child = command.spawn().unwrap();
-        let output = child.wait_with_output().unwrap();
-        println!("{}", String::from_utf8_lossy(&output.stdout));
-        let version_file = exec_dir_path.join("Version.json");
-        if version_file.exists() {
-            let version_str = fs::read_to_string(version_file).unwrap();
-            let version_json: serde_json::Value = serde_json::from_str(&version_str).unwrap();
-            let version_dep = version_json["dependencies"].as_str().unwrap().to_string();
-            println!("version_dep: {}", version_dep);
-            if version_dep != torch_url {
-                torch_url = version_dep;
-                need_install_dep = true;
-            }
-            //write the version to the dependencies.json file
-            let json_str = fs::read_to_string(json_path.clone()).unwrap();
-            let mut json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
-            json["dependencies"][0]["url"] = serde_json::Value::String(torch_url.clone());
-            let new_json_str = serde_json::to_string_pretty(&json).unwrap();
-            fs::write(json_path, new_json_str).unwrap();
-        }
-    }
+    // if exec_dir_path.join("AutoUpdateInCSharp.exe").exists() {
+    //     let mut command = Command::new(exec_dir_path.join("AutoUpdateInCSharp.exe"));
+    //     let arg = format!("Update");
+    //     command.arg(arg);
+    //     command.current_dir(exec_dir_path.as_path());
+    //     let child = command.spawn().unwrap();
+    //     let output = child.wait_with_output().unwrap();
+    //     println!("{}", String::from_utf8_lossy(&output.stdout));
+    //     let version_file = exec_dir_path.join("Version.json");
+    //     if version_file.exists() {
+    //         let version_str = fs::read_to_string(version_file).unwrap();
+    //         let version_json: serde_json::Value = serde_json::from_str(&version_str).unwrap();
+    //         let version_dep = version_json["dependencies"].as_str().unwrap().to_string();
+    //         println!("version_dep: {}", version_dep);
+    //         if version_dep != torch_url {
+    //             torch_url = version_dep;
+    //             need_install_dep = true;
+    //         }
+    //         //write the version to the dependencies.json file
+    //         let json_str = fs::read_to_string(json_path.clone()).unwrap();
+    //         let mut json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+    //         json["dependencies"][0]["url"] = serde_json::Value::String(torch_url.clone());
+    //         let new_json_str = serde_json::to_string_pretty(&json).unwrap();
+    //         fs::write(json_path, new_json_str).unwrap();
+    //     }
+    // }
     //install dependencies
     while  need_install_dep {
         let mut command = Command::new(exec_dir_path.join("diverseupdate.exe"));
@@ -80,6 +80,7 @@ fn main() {
         let child = command.spawn().unwrap();
         let output = child.wait_with_output().unwrap();
         println!("{}", String::from_utf8_lossy(&output.stdout));
+        need_install_dep = !pre_dll_has_exist();
     }
 
     let  mut cmd = Command::new(exec_dir_path.join("diverseshot.exe"));

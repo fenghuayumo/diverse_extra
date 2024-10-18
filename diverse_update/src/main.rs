@@ -51,24 +51,6 @@ fn getExecutablePath() -> std::io::Result<std::path::PathBuf> {
 
 //declare a global filename array
 fn is_torch_pre_dll(path: &str) -> bool {
-    let global_file_name = vec![
-        "torch.dll",
-        "torch_cpu.dll",
-        "torch_cuda.dll",
-        "c10_cuda.dll",
-        "c10.dll",
-        "cudart64_110.dll",
-        "uv.dll",
-        "cudnn_ops_infer64_8.dll",
-        "cudnn_cnn_infer64_8.dll",
-        "asmjit.dll",
-        "zlibwapi.dll",
-        "nvToolsExt64_1.dll",
-        "nvfuser_codegen.dll",
-        "cudnn64_8.dll",
-        "fbgemm.dll",
-        "fbjni.dll",
-    ];
     if path.ends_with("dll") {
         return true;
     }
@@ -101,22 +83,22 @@ fn pre_dll_has_exist() -> bool {
         "cufftw64_10.dll",
     ];
     let exec_path = getExecutablePath().unwrap();
-    let exec_dir_path = exec_path.parent().unwrap();
+    let exec_dir_path = exec_path.parent().unwrap().parent().unwrap();
     if exec_dir_path
         .join("Python/Lib/site-packages/torch/lib")
         .exists()
     {
-        //delete the old torch_dll folder
-        fs::remove_dir_all(exec_dir_path.join("Python/Lib/site-packages/torch/lib"));
-    }
-    for name in global_file_name.iter() {
-        let newpath = exec_dir_path
-            .join("Python/Lib/site-packages/torch/lib")
-            .join(".")
-            .join(name);
-        if !newpath.exists() {
-            return false;
+        for name in global_file_name.iter() {
+            let newpath = exec_dir_path
+                .join("Python/Lib/site-packages/torch/lib")
+                .join(name);
+            println!("Check file: {:?}", newpath);
+            if !newpath.exists() {
+                return false;
+            }
         }
+    }else{
+        return false;
     }
     return true;
 }
@@ -186,7 +168,7 @@ pub async fn download_and_extract(
         let file_name = path.file_name().unwrap();
         let file_name = file_name.to_str().unwrap();
         let exec_path = getExecutablePath().unwrap();
-        let exec_dir_path = exec_path.parent().unwrap();
+        let exec_dir_path = exec_path.parent().unwrap().parent().unwrap();
         let new_file = exec_dir_path
             .join("Python/Lib/site-packages/torch/lib")
             .join(file_name);
