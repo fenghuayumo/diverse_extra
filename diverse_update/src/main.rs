@@ -68,7 +68,6 @@ fn pre_dll_has_exist() -> bool {
             let newpath = exec_dir_path
                 .join("Python/Lib/site-packages/torch/lib")
                 .join(name);
-            println!("Check file: {:?}", newpath);
             if !newpath.exists() {
                 return false;
             }
@@ -137,22 +136,22 @@ pub async fn download_and_extract(
     println!("Unzip completed");
     //move the extracted files to the current directory
     let torch_dir = Path::new("libtorch/lib");
+    let exec_path = getExecutablePath().unwrap();
+    let exec_dir_path = exec_path.parent().unwrap().parent().unwrap();
+    let new_path = exec_dir_path.join("Python/Lib/site-packages/torch/lib");
+    if !new_path.exists() {
+        fs::create_dir_all(new_path.as_path())?;
+    }
     // let output_path = output_path.parent().unwrap();
     for entry in fs::read_dir(torch_dir)? {
         let entry = entry?;
         let path = entry.path();
         let file_name = path.file_name().unwrap();
         let file_name = file_name.to_str().unwrap();
-        let exec_path = getExecutablePath().unwrap();
-        let exec_dir_path = exec_path.parent().unwrap().parent().unwrap();
         let new_file = exec_dir_path
             .join("Python/Lib/site-packages/torch/lib")
             .join(file_name);
-        let new_path = exec_dir_path.join("Python/Lib/site-packages/torch/lib");
-        println!("Move {:?} to {:?}", path, new_file);
-        if !new_path.exists() {
-            fs::create_dir(new_path.as_path())?;
-        }
+
         if is_torch_pre_dll(path.to_str().unwrap()) {
             fs::rename(path, new_file)?;
         }
