@@ -54,15 +54,21 @@ fn main() {
         if version_file.exists() {
             let version_str = fs::read_to_string(version_file).unwrap();
             let version_json: serde_json::Value = serde_json::from_str(&version_str).unwrap();
-            let version_dep = version_json["dependencies"].as_str().unwrap().to_string();
-            println!("version_dep: {}", version_dep);
-            if version_dep != torch_url {
-                torch_url = version_dep;
-                need_install_dep = true;
+            let deps = version_json["dependencies"].as_array().unwrap();
+            // println!("version_dep: {}", version_dep);
+            for dep in deps.iter() {
+                if dep["name"].as_str().unwrap() == "torch" {
+                    let version_dep = dep["url"].as_str().unwrap().to_string();
+                    if version_dep != torch_url {
+                        torch_url = version_dep;
+                        need_install_dep = true;
+                    }
+                }
             }
             //write the version to the dependencies.json file
             let json_str = fs::read_to_string(json_path.clone()).unwrap();
             let mut json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+            json["dependencies"][0]["name"] = serde_json::Value::String("torch".to_string());
             json["dependencies"][0]["url"] = serde_json::Value::String(torch_url.clone());
             let new_json_str = serde_json::to_string_pretty(&json).unwrap();
             fs::write(json_path, new_json_str).unwrap();
