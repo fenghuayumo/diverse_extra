@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::process::Command;
 use std::fs;
 fn getExecutablePath() -> std::io::Result<std::path::PathBuf> {
@@ -36,6 +37,17 @@ fn main() {
             //whether dep["name"].as_str() == "torch"
             if dep["name"].as_str().unwrap() == "torch" {
                 torch_url = dep["url"].as_str().unwrap().to_string();
+            }else{
+                let outpath = dep["output"].as_str().unwrap();
+                if !Path::new(outpath).exists() {
+                    let mut command = Command::new(exec_dir_path.join("diverseupdate.exe"));
+                    let arg = format!("{} {} {}",dep["name"].as_str().unwrap(), torch_url, outpath);
+                    command.arg(arg);
+                    command.current_dir(exec_dir_path.as_path());
+                    let child = command.spawn().unwrap();
+                    let output = child.wait_with_output().unwrap();
+                    println!("{}", String::from_utf8_lossy(&output.stdout));
+                }
             }
         }
     }
@@ -77,7 +89,7 @@ fn main() {
     //install dependencies
     while  need_install_dep {
         let mut command = Command::new(exec_dir_path.join("diverseupdate.exe"));
-        let arg = format!("{}", torch_url);
+        let arg = format!("torch {} {}", torch_url, "");
         command.arg(arg);
         command.current_dir(exec_dir_path.as_path());
         let child = command.spawn().unwrap();
