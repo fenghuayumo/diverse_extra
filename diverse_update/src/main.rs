@@ -78,6 +78,39 @@ fn pre_dll_has_exist() -> bool {
     return true;
 }
 
+pub async  fn download_package(
+    url: &str,
+    output_path: &str,
+    name: &str
+)-> Result<(), Box<dyn std::error::Error>>{
+    let client = Client::new();
+    let res = client.get(url).send().await?;
+    let total_size = res.content_length().ok_or("Failed to get content length")?;
+    let pb: Arc<ProgressBar> = Arc::new(ProgressBar::new(total_size));
+    pb.set_style(ProgressStyle::default_bar()
+        .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
+        .progress_chars("#>-"));
+    pb.set_message(format!("Downloading prerequisite  package : {}", name));
+
+    let dir = Path::new(output_path).parent().unwrap();
+    if !dir.exists() {
+        fs::create_dir_all(dir)?;
+    }
+    let mut file = File::create(output_path)?;
+    let mut stream = res.bytes_stream();
+    let mut downloaded: u64 = 0;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        file.write_all(&chunk)?;
+        let new = downloaded + (chunk.len() as u64);
+        downloaded = new;
+        pb.set_position(new);
+    }
+    pb.finish_with_message(format!("downloaded {} to {}", name,output_path));
+    Ok(())
+}
+
 pub async fn download_and_extract(
     url: &str,
     output_path: &str,
@@ -230,8 +263,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // get url from the command line
     let mut url = "https://download.pytorch.org/libtorch/cu118/libtorch-win-shared-with-deps-2.1.2%2Bcu118.zip";
     let args = std::env::args().collect::<Vec<String>>();
+    let mut name = "torch";
+    let mut output_path = "";
     if args.len() >= 2 {
-        url = args[1].as_str();
+        name = args[1].as_str();
+        url = args[2].as_str();
+        output_path = args[3].as_str();
     }
     if pre_dll_has_exist() {
         println!("The prerequisite  package has existed, no need to download again");
@@ -262,8 +299,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     }),
     // )
     // .unwrap();
-
-    let output_path = "temp.zip";
-    download_and_extract(url.as_str(), output_path, progress, status).await?;
+    if name == "torch" {
+        let output_path = "temp.zip";
+        download_and_extract(url.as_str(), output_path, progress, status).await?;
+    }else{
+        download_package(url.as_str(), output_path, name).await?;
+    }
     Ok(())
 }
