@@ -142,6 +142,7 @@ pub async fn download_and_extract(
     if !new_path.exists() {
         fs::create_dir_all(new_path.as_path())?;
     }
+    let current_path_lib = exec_path.parent().unwrap();
     // let output_path = output_path.parent().unwrap();
     for entry in fs::read_dir(torch_dir)? {
         let entry = entry?;
@@ -155,7 +156,12 @@ pub async fn download_and_extract(
         if is_torch_pre_dll(path.to_str().unwrap()) {
             fs::rename(path, new_file)?;
         }
-        // fs::rename(path, new_path)?;
+       
+        let dll_file = current_path_lib
+            .join(entry.path().file_name().unwrap());
+        if dll_file.exists() {
+            fs::remove_file(dll_file);
+        }
     }
     println!("Move completed");
     // delete the extracted folder
