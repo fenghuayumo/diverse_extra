@@ -261,7 +261,7 @@ impl eframe::App for DiverseUpdateApp {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // get url from the command line
-    let mut url = "https://download.pytorch.org/libtorch/cu118/libtorch-win-shared-with-deps-2.1.2%2Bcu118.zip";
+    let mut url = "https://download.pytorch.org/libtorch/cu118/libtorch-win-shared-with-deps-2.4.1%2Bcu118.zip";
     let args = std::env::args().collect::<Vec<String>>();
     let mut name = "torch";
     let mut output_path = "";
