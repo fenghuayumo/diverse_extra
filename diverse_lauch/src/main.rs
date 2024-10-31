@@ -91,6 +91,8 @@ fn main() {
             }
         }
     }
+    //sleep 2s
+    std::thread::sleep(std::time::Duration::from_secs(2));
     //install dependencies
     while  need_install_dep {
         let mut command = Command::new(exec_dir_path.join("diverseupdate.exe"));
