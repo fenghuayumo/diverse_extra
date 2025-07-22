@@ -84,8 +84,8 @@ pub async  fn download_package_and_extract(
     // 如果当前目录下存在extract_path/name 文件，则直接返回OK
     let exec_path = getExecutablePath().unwrap();
     let exec_dir_path = exec_path.parent().unwrap().parent().unwrap();
-    if Path::new(exec_dir_path.join(extract_path).join(name)).exists() {
-        println!("The package file has existed, no need to download again");
+    if exec_dir_path.join(extract_path).join(name).exists() {
+        println!("The package file {} has existed, no need to download again", name);
         return Ok(());
     }
     let client = Client::new();
