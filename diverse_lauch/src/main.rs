@@ -41,8 +41,8 @@ fn main() {
                     torch_url = dep["url"].as_str().unwrap().to_string();
                 }else{
                     let outpath = dep["output"].as_str().unwrap();
-                    if !Path::new(outpath).exists() {
-                        let mut command = Command::new(exec_dir_path.join("diverseupdate.exe"));
+                    while !exec_dir_path.join(outpath).join(dep["name"].as_str().unwrap()).exists() {
+                        let mut command = Command::new(exec_dir_path.join("splatX_download.exe"));
                         command.arg(format!("{}",dep["name"].as_str().unwrap()));
                         command.arg(format!("{}",dep["url"].as_str().unwrap()));
                         command.arg(format!("{}",outpath));
@@ -101,7 +101,7 @@ fn main() {
     std::thread::sleep(std::time::Duration::from_secs(2));
     //install dependencies
     while  need_install_dep {
-        let mut command = Command::new(exec_dir_path.join("diverseupdate.exe"));
+        let mut command = Command::new(exec_dir_path.join("splatX_download.exe"));
         // let arg = format!("torch {} {}", torch_url, "temp.zip");
         // command.arg(arg);
         command.arg("torch");
@@ -114,7 +114,7 @@ fn main() {
         need_install_dep = !pre_dll_has_exist();
     }
 
-    let  mut cmd = Command::new(exec_dir_path.join("diverseshot.exe"));
+    let  mut cmd = Command::new(exec_dir_path.join("SplatX.exe"));
     if args.len() >= 2 {
         //get project_name from args 0
         let arg = format!("--open_project={}", args.get(1).unwrap());

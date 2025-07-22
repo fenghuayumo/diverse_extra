@@ -1,0 +1,21 @@
+[package]
+name = "splatx_download"
+version = "0.1.0"
+edition = "2021"
+# rust-version = "1.76"
+# publish = false
+
+# [lints]
+# workspace = true
+
+[dependencies]
+reqwest = { version = "0.12.11", features = ["json", "stream", "blocking"] }
+tokio = { version = "1", features = ["full"] }
+indicatif = "0.18.0"
+zip = "4.2.0"
+futures = "0.3.30"
+tar = "0.4.40"
+flate2 = "1.0.27"
+env_logger = "0.11.5"
+image = { version = "0.25.2", features = ["jpeg", "png"]}
+sevenz-rust = "0.5.1"

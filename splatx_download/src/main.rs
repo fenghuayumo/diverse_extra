@@ -1,7 +1,5 @@
 // #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 #![allow(rustdoc::missing_crate_level_docs)] // it's an example
-use eframe::egui::mutex::MutexGuard;
-use egui::{Button, Context, Label, TopBottomPanel, Ui};
 use flate2::read::GzDecoder;
 use futures::stream::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -14,8 +12,7 @@ use std::path::Path;
 use std::time::Instant;
 use tar::Archive;
 use zip::ZipArchive;
-// use eframe::{App, Frame};
-use eframe::egui::{self, text};
+use sevenz_rust;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
@@ -78,25 +75,31 @@ fn pre_dll_has_exist() -> bool {
     return true;
 }
 
-pub async  fn download_package(
+pub async  fn download_package_and_extract(
     url: &str,
-    output_path: &str,
+    temp_path: &str,
+    extract_path: &str,
     name: &str
 )-> Result<(), Box<dyn std::error::Error>>{
+    // 如果当前目录下存在extract_path/name 文件，则直接返回OK
+    if Path::new(extract_path).join(name).exists() {
+        println!("The package file has existed, no need to download again");
+        return Ok(());
+    }
     let client = Client::new();
     let res = client.get(url).send().await?;
     let total_size = res.content_length().ok_or("Failed to get content length")?;
     let pb: Arc<ProgressBar> = Arc::new(ProgressBar::new(total_size));
     pb.set_style(ProgressStyle::default_bar()
-        .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
+        .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")?
         .progress_chars("#>-"));
     pb.set_message(format!("Downloading prerequisite  package : {}", name));
 
-    let dir = Path::new(output_path).parent().unwrap();
+    let dir = Path::new(temp_path).parent().unwrap();
     if !dir.exists() {
         fs::create_dir_all(dir)?;
     }
-    let mut file = File::create(output_path)?;
+    let mut file = File::create(temp_path)?;
     let mut stream = res.bytes_stream();
     let mut downloaded: u64 = 0;
 
@@ -107,7 +110,47 @@ pub async  fn download_package(
         downloaded = new;
         pb.set_position(new);
     }
-    pb.finish_with_message(format!("downloaded {} to {}", name,output_path));
+    pb.finish_with_message(format!("downloaded {} to {}", name,temp_path));
+    if Path::new(temp_path).exists() {
+        println!("Extracting package file: {}", temp_path);
+        // 创建 models 目录
+        let models_dir = Path::new(extract_path);
+        if !models_dir.exists() {
+            fs::create_dir_all(models_dir)?;
+        }
+        
+        // 根据文件扩展名选择解压方法
+        if temp_path.ends_with(".7z") {
+            // 解压 7z 文件
+            sevenz_rust::decompress_file(
+                temp_path,
+                models_dir
+            )?;
+        } else if temp_path.ends_with(".zip") {
+            // 解压 zip 文件
+            let zip_file = File::open(temp_path)?;
+            let mut archive = ZipArchive::new(zip_file)?;
+            for i in 0..archive.len() {
+                let mut file = archive.by_index(i)?;
+                let outpath = models_dir.join(file.sanitized_name());
+                if (&*file.name()).ends_with('/') {
+                    std::fs::create_dir_all(&outpath)?;
+                } else {
+                    if let Some(p) = outpath.parent() {
+                        if !p.exists() {
+                            std::fs::create_dir_all(&p)?;
+                        }
+                    }
+                    let mut outfile = File::create(&outpath)?;
+                    std::io::copy(&mut file, &mut outfile)?;
+                }
+            }
+        }
+        
+        println!("extraction completed");
+        // 删除temp_path 文件
+        fs::remove_file(temp_path)?;
+    }
     Ok(())
 }
 
@@ -128,7 +171,7 @@ pub async fn download_and_extract(
     *status.lock().unwrap() = DownloadStatus::Downloading;
     let pb: Arc<ProgressBar> = Arc::new(ProgressBar::new(total_size));
     pb.set_style(ProgressStyle::default_bar()
-        .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
+        .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")?
         .progress_chars("#>-"));
     pb.set_message(format!("Downloading prerequisite  package : torch"));
 
@@ -146,27 +189,37 @@ pub async fn download_and_extract(
     }
     pb.finish_with_message(format!("Downloaded torch to {}", output_path));
 
-    println!("Unzip file....");
+    println!("Extracting file....");
     *status.lock().unwrap() = DownloadStatus::Unziping;
 
-    let zip_file = File::open(output_path)?;
-    let mut archive = ZipArchive::new(zip_file)?;
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i)?;
-        let outpath = file.sanitized_name();
-        if (&*file.name()).ends_with('/') {
-            std::fs::create_dir_all(&outpath)?;
-        } else {
-            if let Some(p) = outpath.parent() {
-                if !p.exists() {
-                    std::fs::create_dir_all(&p)?;
+    // 根据文件扩展名选择解压方法
+    if output_path.ends_with(".7z") {
+        // 解压 7z 文件
+        sevenz_rust::decompress_file(
+            output_path,
+            Path::new(".")
+        )?;
+    } else if output_path.ends_with(".zip") {
+        // 解压 zip 文件
+        let zip_file = File::open(output_path)?;
+        let mut archive = ZipArchive::new(zip_file)?;
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i)?;
+            let outpath = file.sanitized_name();
+            if (&*file.name()).ends_with('/') {
+                std::fs::create_dir_all(&outpath)?;
+            } else {
+                if let Some(p) = outpath.parent() {
+                    if !p.exists() {
+                        std::fs::create_dir_all(&p)?;
+                    }
                 }
+                let mut outfile = File::create(&outpath)?;
+                std::io::copy(&mut file, &mut outfile)?;
             }
-            let mut outfile = File::create(&outpath)?;
-            std::io::copy(&mut file, &mut outfile)?;
         }
     }
-    println!("Unzip completed");
+    println!("Extraction completed");
     //move the extracted files to the current directory
     let torch_dir = Path::new("libtorch/lib");
     let exec_path = getExecutablePath().unwrap();
@@ -232,39 +285,13 @@ impl DiverseUpdateApp {
     }
 }
 
-impl eframe::App for DiverseUpdateApp {
-    fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
-        // 显示更新进度条``
-        let progess = self.progress.lock().unwrap();
-        // set progress bar on windows center
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.ctx().set_visuals(egui::Visuals::dark());
-            let image = egui::Image::new(egui::include_image!("../assets/images/logo.png"))
-                .fit_to_exact_size(ui.available_size());
-            image.paint_at(ui, ui.available_rect_before_wrap());
-            let window_size = ui.available_size();
-            ui.label(self.download_status.lock().unwrap().to_string());
-            ui.add_space(window_size.y / 2.0 - 30.0);
-            ui.add(
-                egui::ProgressBar::new(*progess)
-                    .desired_height(25.0)
-                    .show_percentage()
-                    .animate(true),
-            );
-            if *self.download_status.lock().unwrap() == DownloadStatus::Finished {
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-            }
-        });
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // get url from the command line
-    let mut url = "https://download.pytorch.org/libtorch/cu118/libtorch-win-shared-with-deps-2.4.1%2Bcu118.zip";
+    let mut url = "https://github.com/fenghuayumo/SplatX/releases/download/dep01/mask_general.7z";
     let args = std::env::args().collect::<Vec<String>>();
-    let mut name = "torch";
-    let mut output_path = "";
+    let mut name = "mask_general.engine";
+    let mut output_path = "models";
     if args.len() >= 2 {
         name = args[1].as_str();
         url = args[2].as_str();
@@ -274,36 +301,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("The prerequisite  package has existed, no need to download again");
         return Ok(());
     }
-
-    // let native_options = eframe::NativeOptions {
-    //     viewport: egui::ViewportBuilder::default()
-    //         .with_inner_size([480.0, 160.0])
-    //         .with_minimize_button(false)
-    //         .with_maximize_button(false)
-    //         .with_resizable(false),
-    //     ..Default::default()
-    // };
     let app = DiverseUpdateApp::new();
     let progress = app.progress.clone();
     let status = app.download_status.clone();
     let url = url.to_string();
-    // tokio::spawn(async move {
-    //     async_run(url, progress, status).await;
-    // });
-    // eframe::run_native(
-    //     "diverse_download",
-    //     native_options,
-    //     Box::new(|cc| {
-    //         egui_extras::install_image_loaders(&cc.egui_ctx);
-    //         Ok(Box::new(app))
-    //     }),
-    // )
-    // .unwrap();
+    // let output_path = "temp.zip";
+    // 根据输入的url 地址确定 temp 压缩包后缀名
+    let mut temp_path = "temp.zip";
+    if url.contains(".7z") {
+        temp_path = "temp.7z";
+    }else if url.contains(".zip") {
+        temp_path = "temp.zip";
+    }
     if name == "torch" {
-        let output_path = "temp.zip";
-        download_and_extract(url.as_str(), output_path, progress, status).await?;
+        download_and_extract(url.as_str(), temp_path, progress, status).await?;
     }else{
-        download_package(url.as_str(), output_path, name).await?;
+        download_package_and_extract(url.as_str(), temp_path, output_path,name).await?;
     }
     Ok(())
 }
