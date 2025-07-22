@@ -82,7 +82,9 @@ pub async  fn download_package_and_extract(
     name: &str
 )-> Result<(), Box<dyn std::error::Error>>{
     // 如果当前目录下存在extract_path/name 文件，则直接返回OK
-    if Path::new(extract_path).join(name).exists() {
+    let exec_path = getExecutablePath().unwrap();
+    let exec_dir_path = exec_path.parent().unwrap().parent().unwrap();
+    if Path::new(exec_dir_path.join(extract_path).join(name)).exists() {
         println!("The package file has existed, no need to download again");
         return Ok(());
     }

@@ -1,6 +1,6 @@
 use std::path::Path;
 use std::process::Command;
-use std::fs;
+use std::{fs, vec};
 fn getExecutablePath() -> std::io::Result<std::path::PathBuf> {
     let path = std::env::current_exe()?;
     Ok(path)
@@ -28,6 +28,19 @@ fn main() {
     let exec_dir_path = exec_path.parent().unwrap().join("bin");
     //read the json file to get the dependencies torch url
     let mut torch_url  = String::from("https://download.pytorch.org/libtorch/cu118/libtorch-win-shared-with-deps-2.4.1%2Bcu118.zip");
+    let write_json_path = exec_dir_path.join("current_dependencies.json");
+    let mut exist_dependencies : Vec<serde_json::value::Value> = vec![];
+    if write_json_path.exists() {
+        let json_str = std::fs::read_to_string(write_json_path.clone()).unwrap();
+        let json : Result<serde_json::Value, serde_json::Error>= serde_json::from_str(&json_str);
+        if json.is_ok() {
+            let json = json.unwrap();
+            let deps = json["dependencies"].as_array().unwrap();
+            for dep in deps.iter() {
+                exist_dependencies.push(dep.clone());
+            }
+        }
+    }
     let json_path = exec_path.parent().unwrap().join("Dependencies.json");
     if json_path.exists()  {
         let json_str = std::fs::read_to_string(json_path.clone()).unwrap();
@@ -36,12 +49,33 @@ fn main() {
             let json = json.unwrap();
             let dependencies = json["dependencies"].as_array().unwrap();
             for dep in dependencies.iter() {
-                //whether dep["name"].as_str() == "torch"
+                let mut need_install_dep = false;
                 if dep["name"].as_str().unwrap() == "torch" {
                     torch_url = dep["url"].as_str().unwrap().to_string();
+                    need_install_dep = !pre_dll_has_exist();
+                    if exist_dependencies.iter().any(|edep| edep["name"].as_str().unwrap() == "torch" && edep["url"].as_str().unwrap() != torch_url) {
+                        need_install_dep = true;
+                    }
+                    while  need_install_dep {
+                        let mut command = Command::new(exec_dir_path.join("splatX_download.exe"));
+                        // let arg = format!("torch {} {}", torch_url, "temp.zip");
+                        // command.arg(arg);
+                        command.arg("torch");
+                        command.arg(format!("{}",torch_url));
+                        command.arg("temp.zip");
+                        command.current_dir(exec_dir_path.as_path());
+                        let child = command.spawn().unwrap();
+                        let output = child.wait_with_output().unwrap();
+                        println!("{}", String::from_utf8_lossy(&output.stdout));
+                        need_install_dep = !pre_dll_has_exist();
+                    }
                 }else{
                     let outpath = dep["output"].as_str().unwrap();
-                    while !exec_dir_path.join(outpath).join(dep["name"].as_str().unwrap()).exists() {
+                    need_install_dep = !exec_dir_path.join(outpath).join(dep["name"].as_str().unwrap()).exists();
+                    if exist_dependencies.iter().any(|edep| edep["name"].as_str().unwrap() == dep["name"].as_str().unwrap() && edep["url"].as_str().unwrap() != dep["url"].as_str().unwrap()) {
+                        need_install_dep = true;
+                    }
+                    while need_install_dep {
                         let mut command = Command::new(exec_dir_path.join("splatX_download.exe"));
                         command.arg(format!("{}",dep["name"].as_str().unwrap()));
                         command.arg(format!("{}",dep["url"].as_str().unwrap()));
@@ -50,14 +84,30 @@ fn main() {
                         let child = command.spawn().unwrap();
                         let output = child.wait_with_output().unwrap();
                         println!("{}", String::from_utf8_lossy(&output.stdout));
+                        need_install_dep = !exec_dir_path.join(outpath).join(dep["name"].as_str().unwrap()).exists();
+                    }
+                }
+                if !need_install_dep {
+                    //update the exist_dependencies with the new dep url, if the dep is not in the exist_dependencies, add it
+                    let mut is_exist = false;
+                    for edep in exist_dependencies.iter_mut() {
+                        if edep["name"].as_str().unwrap() == dep["name"].as_str().unwrap() {
+                            edep["url"] = serde_json::Value::String(dep["url"].as_str().unwrap().to_string());
+                            is_exist = true;
+                        }
+                    }
+                    if !is_exist {
+                        exist_dependencies.push(dep.clone());
                     }
                 }
             }
         }
     }
+    //write the exist_dependencies to the json file
+    let json_str = serde_json::to_string_pretty(&exist_dependencies).unwrap();
+    fs::write(write_json_path, json_str).unwrap();
   
     //check update
-    let mut need_install_dep = !pre_dll_has_exist();
     if exec_dir_path.join("AutoUpdate").join("AutoUpdateInCSharp.exe").exists() {
         let mut command = Command::new(exec_dir_path.join("AutoUpdate").join("AutoUpdateInCSharp.exe"));
         let arg = format!("Update");
@@ -66,53 +116,10 @@ fn main() {
         let child = command.spawn().unwrap();
         let output = child.wait_with_output().unwrap();
         println!("{}", String::from_utf8_lossy(&output.stdout));
-        let version_file = exec_dir_path.join("Version.json");
-        if version_file.exists() {
-            let version_str = fs::read_to_string(version_file).unwrap();
-            let version_json: Result<serde_json::Value, serde_json::Error> = serde_json::from_str(&version_str);
-            if version_json.is_ok() {
-                let version_json = version_json.unwrap();
-                if !version_json["dependencies"].is_null(){
-                    let deps = version_json["dependencies"].as_array().unwrap();
-                    // println!("version_dep: {}", version_dep);
-                    for dep in deps.iter() {
-                        if dep["name"].as_str().unwrap() == "torch" {
-                            let version_dep = dep["url"].as_str().unwrap().to_string();
-                            if version_dep != torch_url {
-                                torch_url = version_dep;
-                                need_install_dep = true;
-                            }
-                        }
-                    }
-                    //write the version to the dependencies.json file
-                    if need_install_dep {
-                        let json_str = fs::read_to_string(json_path.clone()).unwrap();
-                        let mut json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
-                        json["dependencies"][0]["name"] = serde_json::Value::String("torch".to_string());
-                        json["dependencies"][0]["url"] = serde_json::Value::String(torch_url.clone());
-                        let new_json_str = serde_json::to_string_pretty(&json).unwrap();
-                        fs::write(json_path, new_json_str).unwrap();
-                    }
-                }
-            }
-        }
     }
     //sleep 2s
     std::thread::sleep(std::time::Duration::from_secs(2));
     //install dependencies
-    while  need_install_dep {
-        let mut command = Command::new(exec_dir_path.join("splatX_download.exe"));
-        // let arg = format!("torch {} {}", torch_url, "temp.zip");
-        // command.arg(arg);
-        command.arg("torch");
-        command.arg(format!("{}",torch_url));
-        command.arg("temp.zip");
-        command.current_dir(exec_dir_path.as_path());
-        let child = command.spawn().unwrap();
-        let output = child.wait_with_output().unwrap();
-        println!("{}", String::from_utf8_lossy(&output.stdout));
-        need_install_dep = !pre_dll_has_exist();
-    }
 
     let  mut cmd = Command::new(exec_dir_path.join("SplatX.exe"));
     if args.len() >= 2 {
