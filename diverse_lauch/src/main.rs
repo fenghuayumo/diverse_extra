@@ -11,7 +11,7 @@ fn pre_dll_has_exist()->bool{
     let exec_path = getExecutablePath().unwrap();
     let exec_dir_path = exec_path.parent().unwrap();
     let torch_folder = exec_dir_path
-    .join("Python/Lib/site-packages/torch/lib");
+    .join("torch/lib");
 
     for name in global_file_name.iter(){
         let newpath = torch_folder.join(name);
@@ -55,6 +55,7 @@ fn main() {
                     need_install_dep = !pre_dll_has_exist();
                     if exist_dependencies.iter().any(|edep| edep["name"].as_str().unwrap() == "torch" && edep["url"].as_str().unwrap() != torch_url) {
                         need_install_dep = true;
+                        println!("torch url is changed, need to download again");
                     }
                     while  need_install_dep {
                         let mut command = Command::new(exec_dir_path.join("splatX_download.exe"));
@@ -103,10 +104,11 @@ fn main() {
             }
         }
     }
-    //write the exist_dependencies to the json file
-    let json_str = serde_json::to_string_pretty(&exist_dependencies).unwrap();
+    //write the exist_dependencies to the json file as dependencies
+    let mut json = serde_json::Value::Object(serde_json::Map::new());
+    json["dependencies"] = serde_json::Value::Array(exist_dependencies);
+    let json_str = serde_json::to_string_pretty(&json).unwrap();
     fs::write(write_json_path, json_str).unwrap();
-  
     //check update
     if exec_dir_path.join("AutoUpdate").join("AutoUpdateInCSharp.exe").exists() {
         let mut command = Command::new(exec_dir_path.join("AutoUpdate").join("AutoUpdateInCSharp.exe"));
@@ -127,8 +129,8 @@ fn main() {
         let arg = format!("--open_project={}", args.get(1).unwrap());
         cmd.arg(arg);
     }
-    let pypath = exec_path.parent().unwrap().join("Python");
-    let path = format!("{};{}", exec_dir_path.join("sfm").to_string_lossy(), pypath.join("Lib/site-packages/torch/lib").to_string_lossy());
+    let torch_path = exec_path.parent().unwrap().join("torch/lib");
+    let path = format!("{};", torch_path.to_string_lossy());
     println!("path: {}", path);
     cmd.env("PATH", path);
     cmd.current_dir(exec_dir_path.as_path());

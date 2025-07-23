@@ -58,12 +58,12 @@ fn pre_dll_has_exist() -> bool {
     let exec_path = getExecutablePath().unwrap();
     let exec_dir_path = exec_path.parent().unwrap().parent().unwrap();
     if exec_dir_path
-        .join("Python/Lib/site-packages/torch/lib")
+        .join("torch/lib")
         .exists()
     {
         for name in global_file_name.iter() {
             let newpath = exec_dir_path
-                .join("Python/Lib/site-packages/torch/lib")
+                .join("torch/lib")
                 .join(name);
             if !newpath.exists() {
                 return false;
@@ -226,7 +226,7 @@ pub async fn download_and_extract(
     let torch_dir = Path::new("libtorch/lib");
     let exec_path = getExecutablePath().unwrap();
     let exec_dir_path = exec_path.parent().unwrap().parent().unwrap();
-    let new_path = exec_dir_path.join("Python/Lib/site-packages/torch/lib");
+    let new_path = exec_dir_path.join("torch/lib");
     if !new_path.exists() {
         fs::create_dir_all(new_path.as_path())?;
     }
@@ -238,7 +238,7 @@ pub async fn download_and_extract(
         let file_name = path.file_name().unwrap();
         let file_name = file_name.to_str().unwrap();
         let new_file = exec_dir_path
-            .join("Python/Lib/site-packages/torch/lib")
+            .join("torch/lib")
             .join(file_name);
 
         if is_torch_pre_dll(path.to_str().unwrap()) {
@@ -299,10 +299,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         url = args[2].as_str();
         output_path = args[3].as_str();
     }
-    if pre_dll_has_exist() {
-        println!("The prerequisite  package has existed, no need to download again");
-        return Ok(());
-    }
+
     let app = DiverseUpdateApp::new();
     let progress = app.progress.clone();
     let status = app.download_status.clone();
@@ -316,6 +313,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         temp_path = "temp.zip";
     }
     if name == "torch" {
+        if pre_dll_has_exist() {
+            println!("The prerequisite  package has existed, no need to download again");
+            return Ok(());
+        }
         download_and_extract(url.as_str(), temp_path, progress, status).await?;
     }else{
         download_package_and_extract(url.as_str(), temp_path, output_path,name).await?;
