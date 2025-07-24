@@ -48,7 +48,7 @@ fn getExecutablePath() -> std::io::Result<std::path::PathBuf> {
 
 //declare a global filename array
 fn is_torch_pre_dll(path: &str) -> bool {
-    if path.ends_with("dll") {
+    if path.ends_with("dll") || path.ends_with("exe"){
         return true;
     }
     return false;
@@ -58,12 +58,12 @@ fn pre_dll_has_exist() -> bool {
     let exec_path = getExecutablePath().unwrap();
     let exec_dir_path = exec_path.parent().unwrap().parent().unwrap();
     if exec_dir_path
-        .join("torch/lib")
+        .join("litorch/lib")
         .exists()
     {
         for name in global_file_name.iter() {
             let newpath = exec_dir_path
-                .join("torch/lib")
+                .join("litorch/lib")
                 .join(name);
             if !newpath.exists() {
                 return false;
@@ -116,9 +116,9 @@ pub async  fn download_package_and_extract(
     if Path::new(temp_path).exists() {
         println!("Extracting package file: {}", temp_path);
         // 创建 models 目录
-        let models_dir = Path::new(extract_path);
+        let models_dir = exec_dir_path.join(extract_path);
         if !models_dir.exists() {
-            fs::create_dir_all(models_dir)?;
+            fs::create_dir_all(&models_dir)?;
         }
         
         // 根据文件扩展名选择解压方法
@@ -129,24 +129,10 @@ pub async  fn download_package_and_extract(
                 models_dir
             )?;
         } else if temp_path.ends_with(".zip") {
-            // 解压 zip 文件
+            // 解压 zip 文件, 解压到models_dir 目录下
             let zip_file = File::open(temp_path)?;
             let mut archive = ZipArchive::new(zip_file)?;
-            for i in 0..archive.len() {
-                let mut file = archive.by_index(i)?;
-                let outpath = models_dir.join(file.sanitized_name());
-                if (&*file.name()).ends_with('/') {
-                    std::fs::create_dir_all(&outpath)?;
-                } else {
-                    if let Some(p) = outpath.parent() {
-                        if !p.exists() {
-                            std::fs::create_dir_all(&p)?;
-                        }
-                    }
-                    let mut outfile = File::create(&outpath)?;
-                    std::io::copy(&mut file, &mut outfile)?;
-                }
-            }
+            archive.extract(models_dir)?;
         }
         
         println!("extraction completed");
@@ -158,14 +144,15 @@ pub async  fn download_package_and_extract(
 
 pub async fn download_and_extract(
     url: &str,
+    temp_path: &str,
     output_path: &str,
     progress: Arc<Mutex<f32>>,
     status: Arc<Mutex<DownloadStatus>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if pre_dll_has_exist() {
-        println!("The prerequisite  package has existed, no need to download again");
-        return Ok(());
-    }
+    // if pre_dll_has_exist() {
+    //     println!("The prerequisite  package has existed, no need to download again");
+    //     return Ok(());
+    // }
     let client = Client::new();
     let res = client.get(url).send().await?;
     let total_size = res.content_length().ok_or("Failed to get content length")?;
@@ -177,7 +164,7 @@ pub async fn download_and_extract(
         .progress_chars("#>-"));
     pb.set_message(format!("Downloading prerequisite  package : torch"));
 
-    let mut file = File::create(output_path)?;
+    let mut file = File::create(temp_path)?;
     let mut stream = res.bytes_stream();
     let mut downloaded: u64 = 0;
 
@@ -189,72 +176,25 @@ pub async fn download_and_extract(
         pb.set_position(new);
         *(progress.lock().unwrap()) = new as f32 / total_size as f32;
     }
-    pb.finish_with_message(format!("Downloaded torch to {}", output_path));
+    pb.finish_with_message(format!("Downloaded torch to {}", temp_path));
 
     println!("Extracting file....");
     *status.lock().unwrap() = DownloadStatus::Unziping;
 
     // 根据文件扩展名选择解压方法
-    if output_path.ends_with(".7z") {
+    if temp_path.ends_with(".7z") {
         // 解压 7z 文件
         sevenz_rust::decompress_file(
-            output_path,
-            Path::new(".")
+            temp_path,
+            Path::new(output_path)
         )?;
-    } else if output_path.ends_with(".zip") {
-        // 解压 zip 文件
-        let zip_file = File::open(output_path)?;
+    } else if temp_path.ends_with(".zip") {
+        // 解压 zip 文件, 解压到output_path 目录下
+        let zip_file = File::open(temp_path)?;
         let mut archive = ZipArchive::new(zip_file)?;
-        for i in 0..archive.len() {
-            let mut file = archive.by_index(i)?;
-            let outpath = file.sanitized_name();
-            if (&*file.name()).ends_with('/') {
-                std::fs::create_dir_all(&outpath)?;
-            } else {
-                if let Some(p) = outpath.parent() {
-                    if !p.exists() {
-                        std::fs::create_dir_all(&p)?;
-                    }
-                }
-                let mut outfile = File::create(&outpath)?;
-                std::io::copy(&mut file, &mut outfile)?;
-            }
-        }
+        archive.extract(output_path)?;
     }
     println!("Extraction completed");
-    //move the extracted files to the current directory
-    let torch_dir = Path::new("libtorch/lib");
-    let exec_path = getExecutablePath().unwrap();
-    let exec_dir_path = exec_path.parent().unwrap().parent().unwrap();
-    let new_path = exec_dir_path.join("torch/lib");
-    if !new_path.exists() {
-        fs::create_dir_all(new_path.as_path())?;
-    }
-    let current_path_lib = exec_path.parent().unwrap();
-    // let output_path = output_path.parent().unwrap();
-    for entry in fs::read_dir(torch_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        let file_name = path.file_name().unwrap();
-        let file_name = file_name.to_str().unwrap();
-        let new_file = exec_dir_path
-            .join("torch/lib")
-            .join(file_name);
-
-        if is_torch_pre_dll(path.to_str().unwrap()) {
-            fs::rename(path, new_file)?;
-        }
-       
-        let dll_file = current_path_lib
-            .join(entry.path().file_name().unwrap());
-        if dll_file.exists() {
-            fs::remove_file(dll_file);
-        }
-    }
-    println!("Move completed");
-    // delete the extracted folder
-    fs::remove_file(output_path)?;
-    fs::remove_dir_all("libtorch")?;
     *status.lock().unwrap() = DownloadStatus::Finished;
     Ok(())
 }
@@ -264,17 +204,6 @@ struct DiverseUpdateApp {
     progress: Arc<Mutex<f32>>,
     download_status: Arc<Mutex<DownloadStatus>>,
     image_data: Option<Vec<u8>>,
-}
-
-async fn async_run(
-    url: String,
-    progress: Arc<Mutex<f32>>,
-    status: Arc<Mutex<DownloadStatus>>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let output_path = "temp.zip";
-
-    download_and_extract(url.as_str(), output_path, progress, status).await?;
-    Ok(())
 }
 
 impl DiverseUpdateApp {
@@ -290,9 +219,13 @@ impl DiverseUpdateApp {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // get url from the command line
-    let mut url = "https://github.com/fenghuayumo/SplatX/releases/download/dep01/mask_general.7z";
+    let mut url = "https://github.com/fenghuayumo/SplatX/releases/download/v1-mask/mask_general.7z";
+    // let mut url = "https://download.pytorch.org/libtorch/cu128/libtorch-win-shared-with-deps-2.7.1%2Bcu128.zip";
+    // let mut url = "https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.12.0/zip/TensorRT-10.12.0.36.Windows.win10.cuda-12.9.zip";
     let args = std::env::args().collect::<Vec<String>>();
-    let mut name = "mask_general.engine";
+    // let mut name = "mask_general.engine";
+    // let mut output_path = "models";
+    let mut name = "mask_general.onnx";
     let mut output_path = "models";
     if args.len() >= 2 {
         name = args[1].as_str();
@@ -312,14 +245,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }else if url.contains(".zip") {
         temp_path = "temp.zip";
     }
-    if name == "torch" {
-        if pre_dll_has_exist() {
-            println!("The prerequisite  package has existed, no need to download again");
-            return Ok(());
-        }
-        download_and_extract(url.as_str(), temp_path, progress, status).await?;
-    }else{
-        download_package_and_extract(url.as_str(), temp_path, output_path,name).await?;
-    }
+    download_package_and_extract(url.as_str(), temp_path, output_path,name).await?;
     Ok(())
 }
