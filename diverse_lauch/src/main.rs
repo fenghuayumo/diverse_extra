@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::process::Command;
 use std::{fs, vec};
+use std::collections::HashMap;
 fn getExecutablePath() -> std::io::Result<std::path::PathBuf> {
     let path = std::env::current_exe()?;
     Ok(path)
@@ -134,6 +135,91 @@ fn main() {
         let output = child.wait_with_output().unwrap();
         println!("{}", String::from_utf8_lossy(&output.stdout));
     }
+    //如果参数包含--inputPath, 则创建splatx-cli 进程
+    let params = parse_args(&args);
+    
+    // 处理 --help 参数
+    if params.contains_key("--help") {
+        // print the help message
+        println!("Usage: splatx-cli [OPTIONS]");
+        println!("Options:");
+        println!("  -h,--help                   Print this help message and exit");
+        println!("  --inputPath TEXT            set data set path");
+        println!("  --outputPath TEXT [../out_put/iteration]");
+        println!("  --exportMesh BOOLEAN [0]    whether enable normal loss, 0: no, 1: yes");
+        println!("  --modelType INT [0]         set trained model type, 0: Splat3D , 1: Splat2D");
+        println!("  --densifyStrategy INT [1]   set denisfy strategy, 0: SplatADC, 1: SplatMCMC");
+        println!("  --maxIteration INT [30000]  set max iterations");
+        println!("  --load_itr INT [-1]         loaditerations");
+        println!("  --mipAntiliased BOOLEAN [0]  whether enable mipAntiliased training, 0: no, 1: yes");
+        println!("  --packLevel INT [0]         set pack level which can optimize memory usage, 0: no, 1: yes");
+        return;
+    }
+    
+    if params.contains_key("--inputPath") {
+        let mut command = Command::new(exec_dir_path.join("splatX-cli.exe"));
+        
+        // 从HashMap中获取参数值
+        if let Some(input_path) = params.get("--inputPath") {
+            command.arg(format!("--inputPath={}", input_path));
+        }
+        
+        if let Some(output_path) = params.get("--outputPath") {
+            command.arg(format!("--outputPath={}", output_path));
+        }
+        
+        if let Some(export_mesh) = params.get("--exportMesh") {
+            command.arg(format!("--exportMesh={}", export_mesh));
+        }
+        
+        if let Some(model_type) = params.get("--modelType") {
+            command.arg(format!("--modelType={}", model_type));
+        }
+        
+        if let Some(densify_strategy) = params.get("--densifyStrategy") {
+            command.arg(format!("--densifyStrategy={}", densify_strategy));
+        }
+                 if let Some(anti_alias) = params.get("--antiAlias") {
+             command.arg(format!("--mipAntiliased={}", anti_alias));
+         }
+         
+         // 添加其他可选参数
+         if let Some(max_iteration) = params.get("--maxIteration") {
+             command.arg(format!("--maxIteration={}", max_iteration));
+         }
+         
+         if let Some(load_itr) = params.get("--load_itr") {
+             command.arg(format!("--load_itr={}", load_itr));
+         }
+         
+         if let Some(pack_level) = params.get("--packLevel") {
+             command.arg(format!("--packLevel={}", pack_level));
+         } else {
+             command.arg("--packLevel=1");
+         }
+        if json_path.exists()  {
+            let json_str = std::fs::read_to_string(json_path.clone()).unwrap();
+            let json : Result<serde_json::Value, serde_json::Error>= serde_json::from_str(&json_str);
+            if json.is_ok() {
+                let json = json.unwrap();
+                let env_path = json["env_path"].as_str().unwrap();
+                // split the env_path by ;
+                let paths = env_path.split(";");
+                let mut env_path_str = String::new();
+                for path in paths {
+                    let path = current_dir.join(path);
+                    env_path_str.push_str(path.to_str().unwrap());
+                    env_path_str.push(';');
+                }
+                command.env("PATH", env_path_str);
+            }
+        }
+        command.current_dir(exec_dir_path.as_path());
+        let child = command.spawn().unwrap();
+        let output = child.wait_with_output().unwrap();
+        println!("{}", String::from_utf8_lossy(&output.stdout));
+        return;
+    }
     let  mut cmd = Command::new(exec_dir_path.join("SplatX.exe"));
     if args.len() >= 2 {
         //get project_name from args 0
@@ -161,4 +247,23 @@ fn main() {
     let child = cmd.spawn().unwrap();
     // child.detach();
     std::mem::forget(child);
+}
+
+fn parse_args(args: &[String]) -> HashMap<String, String> {
+    let mut params = HashMap::new();
+    
+    for arg in args.iter().skip(1) { // 跳过程序名
+        if arg.starts_with("--") {
+            if let Some(equal_pos) = arg.find('=') {
+                let key = arg[..equal_pos].to_string();
+                let value = arg[equal_pos + 1..].to_string();
+                params.insert(key, value);
+            } else {
+                // 处理没有值的标志参数
+                params.insert(arg.clone(), "true".to_string());
+            }
+        }
+    }
+    
+    params
 }
