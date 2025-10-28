@@ -101,63 +101,66 @@ fn main() {
         println!("{}", String::from_utf8_lossy(&output.stdout));
     }
     //sleep 2s
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    // std::thread::sleep(std::time::Duration::from_secs(2));
     //install dependencies
     //convert onnx to engine
-    if !current_dir.join("models").join("mask_general.engine").exists() {
-        println!("convert onnx to engine, first time will cost a few minutes");
-        let mut command = Command::new(current_dir.join("TensorRT-10.12.0.36/bin/trtexec.exe"));
-        let onnx_path = current_dir.join("models").join("mask_general.onnx");
-        let engine_path = current_dir.join("models").join("mask_general.engine");
-        let arg = format!("--onnx={}", onnx_path.to_str().unwrap());
-        command.arg(arg);
-        let args1 = format!("--saveEngine={}", engine_path.to_str().unwrap());
-        command.arg(args1);
-        if json_path.exists()  {
-            let json_str = std::fs::read_to_string(json_path.clone()).unwrap();
-            let json : Result<serde_json::Value, serde_json::Error>= serde_json::from_str(&json_str);
-            if json.is_ok() {
-                let json = json.unwrap();
-                let env_path = json["env_path"].as_str().unwrap();
-                // split the env_path by ;
-                let paths = env_path.split(";");
-                let mut env_path_str = String::new();
-                for path in paths {
-                    let path = current_dir.join(path);
-                    env_path_str.push_str(path.to_str().unwrap());
-                    env_path_str.push(';');
-                }
-                command.env("PATH", env_path_str);
-            }
-        }
-        command.current_dir(current_dir);
-        let child = command.spawn().unwrap();
-        let output = child.wait_with_output().unwrap();
-        println!("{}", String::from_utf8_lossy(&output.stdout));
-    }
-    //如果参数包含--inputPath, 则创建splatx-cli 进程
+    // if !current_dir.join("models").join("mask_general.engine").exists() {
+    //     println!("convert onnx to engine, first time will cost a few minutes");
+    //     let mut command = Command::new(current_dir.join("TensorRT-10.12.0.36/bin/trtexec.exe"));
+    //     let onnx_path = current_dir.join("models").join("mask_general.onnx");
+    //     let engine_path = current_dir.join("models").join("mask_general.engine");
+    //     let arg = format!("--onnx={}", onnx_path.to_str().unwrap());
+    //     command.arg(arg);
+    //     let args1 = format!("--saveEngine={}", engine_path.to_str().unwrap());
+    //     command.arg(args1);
+    //     if json_path.exists()  {
+    //         let json_str = std::fs::read_to_string(json_path.clone()).unwrap();
+    //         let json : Result<serde_json::Value, serde_json::Error>= serde_json::from_str(&json_str);
+    //         if json.is_ok() {
+    //             let json = json.unwrap();
+    //             let env_path = json["env_path"].as_str().unwrap();
+    //             // split the env_path by ;
+    //             let paths = env_path.split(";");
+    //             let mut env_path_str = String::new();
+    //             for path in paths {
+    //                 let path = current_dir.join(path);
+    //                 env_path_str.push_str(path.to_str().unwrap());
+    //                 env_path_str.push(';');
+    //             }
+    //             command.env("PATH", env_path_str);
+    //         }
+    //     }
+    //     command.current_dir(current_dir);
+    //     let child = command.spawn().unwrap();
+    //     let output = child.wait_with_output().unwrap();
+    //     println!("{}", String::from_utf8_lossy(&output.stdout));
+    // }
+    //如果参数包含--inputPath, 则创建divshot-cli 进程
     let params = parse_args(&args);
     
     // 处理 --help 参数
     if params.contains_key("--help") {
         // print the help message
-        println!("Usage: splatx-cli [OPTIONS]");
+        println!("Usage: divshot-cli [OPTIONS]");
         println!("Options:");
         println!("  -h,--help                   Print this help message and exit");
+        println!("  --version                   Print the version of divshot");
+        println!("  --maxImageWidth INT [4096]   set max image width");
+        println!("  --maxImageHeight INT [4096]  set max image height");
         println!("  --inputPath TEXT            set data set path");
         println!("  --outputPath TEXT [../out_put/iteration]");
-        println!("  --exportMesh BOOLEAN [0]    whether enable normal loss, 0: no, 1: yes");
+        println!("  --exportMesh BOOLEAN [0]    whether enable export mesh, 0: no, 1: yes");
         println!("  --modelType INT [0]         set trained model type, 0: Splat3D , 1: Splat2D");
-        println!("  --densifyStrategy INT [1]   set denisfy strategy, 0: SplatADC, 1: SplatMCMC");
+        println!("  --densifyStrategy INT [1]   set denisfy strategy, 0: SplatADC, 1: SplatMCMC , 2: SplatADC+");
         println!("  --maxIteration INT [30000]  set max iterations");
-        println!("  --load_itr INT [-1]         loaditerations");
+        println!("  --loadStep INT [-1]         from which step to load");
         println!("  --mipAntiliased BOOLEAN [0]  whether enable mipAntiliased training, 0: no, 1: yes");
         println!("  --packLevel INT [0]         set pack level which can optimize memory usage, 0: no, 1: yes");
         return;
     }
     
     if params.contains_key("--inputPath") {
-        let mut command = Command::new(exec_dir_path.join("splatX-cli.exe"));
+        let mut command = Command::new(exec_dir_path.join("divshot-cli.exe"));
         
         // 从HashMap中获取参数值
         if let Some(input_path) = params.get("--inputPath") {
@@ -188,7 +191,7 @@ fn main() {
              command.arg(format!("--maxIteration={}", max_iteration));
          }
          
-         if let Some(load_itr) = params.get("--load_itr") {
+         if let Some(load_itr) = params.get("--loadStep") {
              command.arg(format!("--load_itr={}", load_itr));
          }
          
@@ -196,6 +199,12 @@ fn main() {
              command.arg(format!("--packLevel={}", pack_level));
          } else {
              command.arg("--packLevel=1");
+         }
+         if let Some(max_image_width) = params.get("--maxImageWidth") {
+             command.arg(format!("--maxImageWidth={}", max_image_width));
+         }
+         if let Some(max_image_height) = params.get("--maxImageHeight") {
+             command.arg(format!("--maxImageHeight={}", max_image_height));
          }
         if json_path.exists()  {
             let json_str = std::fs::read_to_string(json_path.clone()).unwrap();
@@ -220,7 +229,7 @@ fn main() {
         println!("{}", String::from_utf8_lossy(&output.stdout));
         return;
     }
-    let  mut cmd = Command::new(exec_dir_path.join("SplatX.exe"));
+    let  mut cmd = Command::new(exec_dir_path.join("divshot.exe"));
     if args.len() >= 2 {
         //get project_name from args 0
         let arg = format!("--open_project={}", args.get(1).unwrap());
