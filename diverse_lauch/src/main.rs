@@ -89,7 +89,14 @@ fn main() {
     let mut json = serde_json::Value::Object(serde_json::Map::new());
     json["dependencies"] = serde_json::Value::Array(exist_dependencies);
     let json_str = serde_json::to_string_pretty(&json).unwrap();
-    fs::write(write_json_path, json_str).unwrap();
+    match fs::write(&write_json_path, json_str) {
+        Ok(_) => println!("Successfully written dependencies configuration file"),
+        Err(e) => {
+            eprintln!("Warning: Failed to write dependencies configuration file {:?}: {}", write_json_path, e);
+            eprintln!("Hint: Please try running the program with administrator privileges");
+            // Continue execution without interruption
+        }
+    }
     //check update
     if exec_dir_path.join("AutoUpdate").join("AutoUpdateInCSharp.exe").exists() {
         let mut command = Command::new(exec_dir_path.join("AutoUpdate").join("AutoUpdateInCSharp.exe"));
