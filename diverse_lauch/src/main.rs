@@ -156,6 +156,8 @@ fn main() {
         println!("  --maxImageHeight INT [4096]  set max image height");
         println!("  --inputPath TEXT            set data set path");
         println!("  --outputPath TEXT [../out_put/iteration]");
+        println!("  --cameraPosePath TEXT       set camera pose path");
+        println!("  --pointCloudPath TEXT       set point cloud path");
         println!("  --exportMesh BOOLEAN [0]    whether enable export mesh, 0: no, 1: yes");
         println!("  --modelType INT [0]         set trained model type, 0: Splat3D , 1: Splat2D");
         println!("  --densifyStrategy INT [1]   set denisfy strategy, 0: SplatADC, 1: SplatMCMC , 2: SplatADC+");
@@ -212,6 +214,12 @@ fn main() {
          }
          if let Some(max_image_height) = params.get("--maxImageHeight") {
              command.arg(format!("--maxImageHeight={}", max_image_height));
+         }
+         if let Some(camera_pose_path) = params.get("--cameraPosePath") {
+             command.arg(format!("--cameraPosePath={}", camera_pose_path));
+         }
+         if let Some(point_cloud_path) = params.get("--pointCloudPath") {
+             command.arg(format!("--pointCloudPath={}", point_cloud_path));
          }
         if json_path.exists()  {
             let json_str = std::fs::read_to_string(json_path.clone()).unwrap();
